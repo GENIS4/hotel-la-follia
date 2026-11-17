@@ -187,7 +187,15 @@ function requiredMissing(b, cli) {
   if (!D.config.grup.nif) miss.push('NIF del grup (Configuració)'); if (!D.config.grup.iban) miss.push('IBAN del grup (Configuració)');
   return miss;
 }
-const nextInvoiceNumber = () => String(D.config.numeracio.proxim).padStart(2, '0') + '/' + D.config.numeracio.any;
+/* Numeració de factures: es reinicia sola cada any (01/2027, 02/2027…) i mai repeteix un número ja fet */
+const invoiceDateFor = (b, cfg) => (cfg.dataFacturaMode === 'posterior' && b && b.data) ? addDays(b.data, 1) : todayISO();
+function nextNumFor(d, year) {
+  const n = d.config.numeracio || {}; let p = (+n.any === year) ? (parseInt(n.proxim) || 1) : 1;
+  const mx = Math.max(0, ...d.bolos.filter(x => x.numFactura && String(x.numFactura).trim().endsWith('/' + year)).map(x => parseInt(x.numFactura) || 0));
+  return p <= mx ? mx + 1 : p;
+}
+const fmtNumF = (p, y) => String(p).padStart(2, '0') + '/' + y;
+const nextInvoiceNumber = b => { const y = +invoiceDateFor(b, D.config).slice(0, 4); return fmtNumF(nextNumFor(D, y), y); };
 
 const DIETA_TEXT_DEFAULT = "{perceptor}, amb DNI/NIF {dni} i domicili a {domicili}, declara haver rebut de {associacio}, amb NIF {nif}, la quantitat de {total} ({totalLletres}) en concepte de compensació de les despeses de desplaçament amb vehicle propi, originades pels desplaçaments fets per a {nBolos} actuació(ns) de l'associació, en les dates i destinacions que es detallen a continuació, amb un total de {km} km recorreguts a raó de {preuKm} €/km.";
 const DIETA_NOTES_DEFAULT = "El perceptor declara que els desplaçaments detallats s'han realitzat amb vehicle propi i per raó de l'activitat de l'associació. Aquest document serveix com a justificant del pagament i s'arxiva a la comptabilitat de l'associació.";
@@ -551,7 +559,7 @@ function invoiceData(b, cli) { const c = calc(b); const venc = addDays(b.dataFac
 function invoiceHTML(b, cli) {
   const g = D.config.grup, L = docLogo(), { c, venc, concepte } = invoiceData(b, cli);
   return '<div style="display:flex;justify-content:space-between;gap:12px"><div>' + (L ? '<img src="' + L + '" style="max-height:60px;max-width:180px;object-fit:contain"><br>' : '') + '<b>' + escH(g.nom) + '</b><br>' + escH(g.nif) + '<br>' + escH(g.nomFiscal) + '<br>' + escH(g.adreca) + '<br>' + escH(g.poblacio) + '<br>' + escH(g.cp + ' ' + g.provincia) + '</div>' +
-    '<div style="text-align:right"><b>Factura núm. ' + escH(b.numFactura || nextInvoiceNumber()) + '</b><br>Data d’emissió: ' + fmtDate(b.dataFactura || todayISO()) + '</div></div><hr>' +
+    '<div style="text-align:right"><b>Factura núm. ' + escH(b.numFactura || nextInvoiceNumber(b)) + '</b><br>Data d’emissió: ' + fmtDate(b.dataFactura || todayISO()) + '</div></div><hr>' +
     '<div style="display:flex;justify-content:space-between;gap:12px"><div><b>FACTURAR A:</b><br>CIF ' + escH(cli.cif || '') + '<br>' + escH((cli.nom || '').toUpperCase()) + '<br>' + escH(cli.adreca || '') + '<br>' + escH(cli.poblacio || '') + '<br>' + escH((cli.cp || '') + ' ' + (cli.provincia || '')) + '</div>' +
     ((cli.dir3oc || cli.dir3og || cli.dir3ut) ? '<div style="flex:1;padding:0 12px"><b>CODIS DIR3</b><br>' + (cli.dir3oc ? 'Oficina comptable: ' + escH(cli.dir3oc) + '<br>' : '') + (cli.dir3og ? 'Òrgan gestor: ' + escH(cli.dir3og) + '<br>' : '') + (cli.dir3ut ? 'Unitat tramitadora: ' + escH(cli.dir3ut) : '') + '</div>' : '') +
     '<div style="text-align:right"><b>PAGAMENT</b><br>Data de venciment:<br>' + fmtDate(venc) + '</div></div><hr>' +
@@ -2507,10 +2515,9 @@ function BoloFitxa({ bolo, tab0, onClose }) {
   const generarFactura = () => {
     setData(d => {
       const cur = d.bolos.find(x => x.id === b.id); if (!cur || cur.numFactura) return d;
-      const mode = d.config.dataFacturaMode;
-      const numF = String(d.config.numeracio.proxim).padStart(2, '0') + '/' + d.config.numeracio.any;
-      const dataF = mode === 'posterior' && cur.data ? addDays(cur.data, 1) : todayISO();
-      return { ...d, config: { ...d.config, numeracio: { ...d.config.numeracio, proxim: d.config.numeracio.proxim + 1 } },
+      const dataF = invoiceDateFor(cur, d.config), yF = +dataF.slice(0, 4), pF = nextNumFor(d, yF), numF = fmtNumF(pF, yF);
+      const nOld = d.config.numeracio || {}, numeracio = yF >= (+nOld.any || 0) ? { ...nOld, proxim: pF + 1, any: yF } : nOld;
+      return { ...d, config: { ...d.config, numeracio },
         bolos: d.bolos.map(x => x.id === b.id ? { ...x, numFactura: numF, dataFactura: dataF, diesVenciment: x.diesVenciment || 30, estat: advanceTo(x, 'Factura generada') } : x) };
     });
     setPreview('factura'); toast('Factura generada amb número definitiu');
@@ -2609,7 +2616,7 @@ function BoloFitxa({ bolo, tab0, onClose }) {
         <div className="card" style={{ background: '#fff' }}>
           <div className="flex items-center gap-2 flex-wrap mb-2"><h2 className="m-0 flex-1">🧾 Factura</h2>{b.numFactura ? <span className="badge" style={{ color: '#1f6fd6', background: '#e3efff' }}>Núm. {b.numFactura}</span> : <span className="badge" style={{ color: '#5f6673', background: '#eceff3' }}>Sense factura · proper número {nextInvoiceNumber()}</span>}</div>
           {!b.numFactura
-            ? <><button className="btn-game" disabled={miss.length > 0} onClick={() => ask('Generar la factura? S’hi assignarà el número ' + nextInvoiceNumber() + ' i la numeració avançarà.', generarFactura)}>🧾 Generar factura (assigna número)</button>
+            ? <><button className="btn-game" disabled={miss.length > 0} onClick={() => ask('Generar la factura? S’hi assignarà el número ' + nextInvoiceNumber(b) + ' i la numeració avançarà.', generarFactura)}>🧾 Generar factura (assigna número)</button>
               <p className="text-xs opacity-70 font-bold mt-2">El número s’assigna una sola vegada per bolo: tornar-la a descarregar no crea cap factura nova.</p></>
             : <>
               <div className="grid sm:grid-cols-4 gap-2">
@@ -3303,7 +3310,7 @@ function OfConfig() {
       <div className="card mb-4"><h2>🧾 Fiscal i numeració</h2>
         <div className="grid sm:grid-cols-3 gap-2">{I('fiscal', 'ivaDefault', 'IVA % per defecte', 'number')}{I('fiscal', 'retencioDefault', 'Retenció % per defecte', 'number')}<Field label="Exempt d’IVA per defecte"><select className="inp" value={String(c.fiscal.exempt)} onChange={e => S('fiscal', 'exempt', e.target.value === 'true')}><option value="true">Sí</option><option value="false">No</option></select></Field></div>
         <Field label="Text de l’exempció" className="mt-2"><textarea className="inp" value={c.fiscal.exempcioText} onChange={e => S('fiscal', 'exempcioText', e.target.value)} /></Field>
-        <div className="grid sm:grid-cols-3 gap-2 mt-2">{I('numeracio', 'proxim', 'Pròxim número de factura', 'number')}{I('numeracio', 'any', 'Any de la numeració', 'number')}<Field label="Els comptes comencen el"><input className="inp" type="date" value={c.iniciComptes || '2027-01-01'} onChange={e => setC(x => ({ ...x, iniciComptes: e.target.value }))} /></Field><Field label="Data de factura per defecte"><select className="inp" value={c.dataFacturaMode} onChange={e => setC(x => ({ ...x, dataFacturaMode: e.target.value }))}><option value="posterior">Endemà del bolo</option><option value="actual">Data actual</option></select></Field></div>
+        <div className="grid sm:grid-cols-3 gap-2 mt-2">{I('numeracio', 'proxim', 'Pròxim número de factura', 'number')}{I('numeracio', 'any', 'Any de la numeració (canvia sol cada any)', 'number')}<Field label="Els comptes comencen el"><input className="inp" type="date" value={c.iniciComptes || '2027-01-01'} onChange={e => setC(x => ({ ...x, iniciComptes: e.target.value }))} /></Field><Field label="Data de factura per defecte"><select className="inp" value={c.dataFacturaMode} onChange={e => setC(x => ({ ...x, dataFacturaMode: e.target.value }))}><option value="posterior">Endemà del bolo</option><option value="actual">Data actual</option></select></Field></div>
         <p className="text-xs opacity-70 font-bold">Si ja havíeu emès factures amb el gestor antic, posa aquí el número que toca ara perquè no es repeteixin.</p></div>
       <button className="btn-game" onClick={save}>💾 Desar configuració</button>
     </>
