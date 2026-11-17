@@ -1125,7 +1125,7 @@ textarea.inp{min-height:70px;resize:vertical}
 
 /* ---- Paisatge: estacions, temps, dia i nit ---- */
 .scene{background:#5fb3ec}
-.dock .btn-game{font-size:15px;padding:9px 15px}
+.dock{bottom:8px!important;gap:7px!important}.dock .btn-game{font-size:13px;padding:6px 12px;border-width:2px;box-shadow:0 3px 0 rgba(0,0,0,.25)}
 .chip-hud.on{background:#fff4c2;border-color:#f5a020}
 .next-card.pop{left:auto;right:auto;bottom:auto;position:fixed;left:50%;transform:translateX(-50%);display:block!important;z-index:6;max-width:92vw}
 .next-card.pop h4{display:flex;align-items:center}
@@ -1150,6 +1150,24 @@ textarea.inp{min-height:70px;resize:vertical}
 @keyframes ripple{0%,100%{opacity:.2;transform:scaleX(.7)}50%{opacity:.9;transform:scaleX(1.15)}}
 @media (max-width:640px){.hide-sm{display:none}.dock{gap:5px;bottom:8px}.dock .btn-game{font-size:12.5px;padding:7px 9px}}
 @media (prefers-reduced-motion:reduce){.drop,.flake,.leaf,.fog-drift,.fog-drift2,.swim,.ripple{animation:none}}
+.roam{animation:roam 16s linear infinite}
+@keyframes roam{0%{transform:translateX(0)}50%{transform:translateX(var(--d))}100%{transform:translateX(0)}}
+.roam-flip{animation:pflip 16s steps(1) infinite;transform-box:fill-box;transform-origin:50% 50%}
+.trot{animation:trot .35s ease-in-out infinite alternate}
+@keyframes trot{to{transform:translateY(-2px)}}
+.wag{animation:wag .3s ease-in-out infinite alternate;transform-box:fill-box}
+@keyframes wag{from{transform:rotate(-18deg)}to{transform:rotate(18deg)}}
+.wag2{animation:wag 2.4s ease-in-out infinite alternate;transform-box:fill-box}
+.hop{animation:hop .9s ease-in-out infinite}
+@keyframes hop{0%,100%{transform:translateY(0)}40%{transform:translateY(-9px)}}
+.flutter{animation:flutter 7s ease-in-out infinite}
+@keyframes flutter{0%{transform:translate(0,0)}25%{transform:translate(30px,-24px)}50%{transform:translate(60px,-6px)}75%{transform:translate(24px,-34px)}100%{transform:translate(0,0)}}
+.wings{animation:wings .18s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:50% 50%}
+@keyframes wings{to{transform:scaleX(.25)}}
+.float{animation:floaty 3.2s ease-in-out infinite;transform-box:fill-box}
+@keyframes floaty{0%,100%{transform:translate(0,0) rotate(-2deg)}50%{transform:translate(8px,-3px) rotate(2deg)}}
+.zz{animation:tw 1.6s ease-in-out infinite alternate}
+@media (prefers-reduced-motion:reduce){.roam,.roam-flip,.trot,.wag,.wag2,.hop,.flutter,.wings,.float{animation:none}}
 `;
 
 
@@ -1256,7 +1274,8 @@ function calcEnv(t, ov = {}) {
   const twi = Math.max(Math.exp(-Math.pow((hora - sortida) / 0.7, 2)), Math.exp(-Math.pow((hora - posta) / 0.7, 2)));
   const pDia = (hora - sortida) / (posta - sortida);
   const nitLen = 24 - (posta - sortida); let hn = hora - posta; if (hn < 0) hn += 24; const pNit = hn / nitLen;
-  return { est, temps, hora, sortida, posta, light, twi, pDia, pNit, ov };
+  const nadal = ov.nadal === 'si' ? true : ov.nadal === 'no' ? false : (t.mo === 12 || (t.mo === 1 && t.da <= 6));
+  return { est, temps, hora, sortida, posta, light, twi, pDia, pNit, ov, nadal };
 }
 function useEnv() {
   const [now, setNow] = useState(() => madridNow());
@@ -1335,6 +1354,95 @@ function Cloud({ x, y, s = 1, dur = 14, delay = 0, c = '#fff', c2 = '#e3f3ff' })
     </g>
   );
 }
+
+/* ---------- Animals i decoració del jardí ---------- */
+function Bush({ x, y, s = 1, est }) { const b = BUSH[est]; return <g transform={`translate(${x},${y}) scale(${s})`}><ellipse cx="4" cy="4" rx="30" ry="6" fill="rgba(0,0,0,.12)" /><circle cx="-12" cy="-6" r="14" fill={b[0]} /><circle cx="10" cy="-8" r="16" fill={b[1]} /><circle cx="24" cy="-2" r="10" fill={b[0]} />{b[2] && <><circle cx="-6" cy="-14" r="3.2" fill={b[2]} /><circle cx="14" cy="-18" r="3.2" fill={b[2]} /><circle cx="22" cy="-6" r="2.8" fill={b[2]} /></>}</g>; }
+function Rock({ x, y, s = 1, est }) { return <g transform={`translate(${x},${y}) scale(${s})`}><ellipse cx="0" cy="0" rx="16" ry="9" fill="#9aa0a6" /><ellipse cx="-4" cy="-3" rx="8" ry="4" fill="#b8bec4" />{est === 'hivern' && <ellipse cx="0" cy="-6" rx="12" ry="4" fill="#fff" />}</g>; }
+function Dog() {
+  return <g>
+    <ellipse cx="2" cy="1" rx="18" ry="3.5" fill="rgba(0,0,0,.15)" />
+    <g className="trot">
+      <rect x="-12" y="-10" width="4" height="11" rx="2" fill="#a86b35" className="leg-a" style={{ transformOrigin: '50% 0%' }} /><rect x="8" y="-10" width="4" height="11" rx="2" fill="#a86b35" className="leg-b" style={{ transformOrigin: '50% 0%' }} />
+      <path className="wag" d="M-15 -14 Q-24 -22 -22 -28" stroke="#c8874a" strokeWidth="4" fill="none" strokeLinecap="round" style={{ transformOrigin: '100% 100%' }} />
+      <ellipse cx="0" cy="-13" rx="16" ry="8" fill="#c8874a" /><ellipse cx="2" cy="-10" rx="9" ry="4" fill="#e9b47a" />
+      <rect x="-6" y="-10" width="4" height="11" rx="2" fill="#c8874a" className="leg-b" style={{ transformOrigin: '50% 0%' }} /><rect x="12" y="-10" width="4" height="11" rx="2" fill="#c8874a" className="leg-a" style={{ transformOrigin: '50% 0%' }} />
+      <circle cx="16" cy="-22" r="8" fill="#c8874a" /><ellipse cx="23" cy="-20" rx="5" ry="3.5" fill="#e9b47a" /><circle cx="27" cy="-21" r="1.8" fill="#222" />
+      <ellipse cx="12" cy="-26" rx="3.5" ry="6" fill="#7a4a24" transform="rotate(20 12 -26)" /><circle cx="18" cy="-24" r="1.4" fill="#222" />
+      <rect x="10" y="-17" width="9" height="3" rx="1.5" fill="#e8457c" />
+    </g>
+  </g>;
+}
+function Cat({ sleep }) {
+  return <g>
+    <path className="wag2" d="M10 -2 Q26 4 22 18" stroke="#3b3b45" strokeWidth="3.5" fill="none" strokeLinecap="round" style={{ transformOrigin: '0% 0%' }} />
+    <ellipse cx="0" cy="-6" rx="12" ry="8" fill="#3b3b45" />
+    <circle cx="-9" cy="-14" r="7" fill="#3b3b45" /><polygon points="-15,-18 -14,-26 -10,-20" fill="#3b3b45" /><polygon points="-8,-20 -4,-26 -3,-18" fill="#3b3b45" />
+    {sleep ? <><path d="M-13 -14 Q-11 -12 -9 -14 M-8 -14 Q-6 -12 -4 -14" stroke="#ffd93d" strokeWidth="1.2" fill="none" /><text x="-4" y="-26" fontSize="9" fontWeight="900" fill="#fff" className="zz">z</text></> : <><circle cx="-11.5" cy="-14.5" r="1.4" fill="#ffd93d" /><circle cx="-6.5" cy="-14.5" r="1.4" fill="#ffd93d" /></>}
+    <circle cx="-9" cy="-11.5" r="1" fill="#ff8fab" />
+  </g>;
+}
+function Rabbit({ c = '#f4f0ea' }) {
+  return <g><ellipse cx="0" cy="1" rx="10" ry="2.5" fill="rgba(0,0,0,.14)" /><g className="hop">
+    <ellipse cx="0" cy="-7" rx="9" ry="7" fill={c} /><circle cx="-8" cy="-6" r="3.5" fill="#fff" />
+    <circle cx="7" cy="-13" r="5.5" fill={c} /><ellipse cx="5" cy="-24" rx="2.2" ry="7" fill={c} transform="rotate(-10 5 -24)" /><ellipse cx="9" cy="-23" rx="2.2" ry="7" fill={c} transform="rotate(12 9 -23)" />
+    <ellipse cx="5" cy="-24" rx="1" ry="5" fill="#ffc2d4" transform="rotate(-10 5 -24)" /><circle cx="9" cy="-14" r="1.1" fill="#222" /><circle cx="12" cy="-12" r="1" fill="#ff8fab" />
+  </g></g>;
+}
+function Squirrel() {
+  return <g className="hop" style={{ animationDuration: '1.6s' }}><path d="M-6 -4 Q-20 -10 -14 -26 Q-6 -34 -4 -22 Q-8 -14 -2 -8" fill="#c0612b" /><ellipse cx="2" cy="-6" rx="7" ry="6" fill="#d9792f" /><circle cx="7" cy="-13" r="4.5" fill="#d9792f" /><polygon points="5,-17 6,-21 8,-17" fill="#d9792f" /><circle cx="8.5" cy="-14" r="1" fill="#222" /><circle cx="9" cy="-6" r="2.4" fill="#8a5a2b" /></g>;
+}
+function Butterfly({ c = '#ff7ab0', d = 0 }) {
+  return <g className="flutter" style={{ animationDelay: d + 's' }}><g className="wings" style={{ animationDelay: d + 's' }}><ellipse cx="-4" cy="0" rx="4.5" ry="3.5" fill={c} /><ellipse cx="4" cy="0" rx="4.5" ry="3.5" fill={c} /><ellipse cx="-3" cy="4" rx="3" ry="2.4" fill={c} opacity=".8" /><ellipse cx="3" cy="4" rx="3" ry="2.4" fill={c} opacity=".8" /></g><rect x="-.7" y="-3" width="1.4" height="8" rx=".7" fill="#333" /></g>;
+}
+function Picnic({ est }) {
+  const snow = est === 'hivern';
+  return <g>
+    <ellipse cx="0" cy="6" rx="66" ry="10" fill="rgba(0,0,0,.14)" />
+    <rect x="-56" y="-10" width="112" height="7" rx="2" fill="#a86b35" /><rect x="-50" y="-3" width="5" height="12" fill="#7a4a24" /><rect x="45" y="-3" width="5" height="12" fill="#7a4a24" />
+    <rect x="-40" y="-36" width="6" height="30" fill="#7a4a24" transform="rotate(-8 -37 -20)" /><rect x="34" y="-36" width="6" height="30" fill="#7a4a24" transform="rotate(8 37 -20)" />
+    <rect x="-52" y="-42" width="104" height="9" rx="2" fill="#b77a3d" />
+    {snow ? <path d="M-54 -42 Q-30 -52 0 -48 Q30 -53 54 -42 Z" fill="#fff" /> : <>
+      <path d="M-30 -42 L30 -42 L34 -30 L-34 -30 Z" fill="#fff" /><g fill="#e5484d">{[-26, -14, -2, 10, 22].map(x => <rect key={x} x={x} y="-42" width="6" height="6" />)}{[-20, -8, 4, 16, 28].map(x => <rect key={x} x={x - 2} y="-36" width="6" height="6" />)}</g>
+      <g transform="translate(-14,-46)"><path d="M-10 0 L10 0 L8 -10 L-8 -10 Z" fill="#c8925a" stroke="#8a5a2b" /><path d="M-8 -10 Q0 -22 8 -10" stroke="#8a5a2b" strokeWidth="2" fill="none" /></g>
+      {est === 'estiu' ? <g transform="translate(14,-46)"><path d="M-12 0 A12 12 0 0 1 12 0 Z" fill="#2e9e4f" /><path d="M-10 0 A10 10 0 0 1 10 0 Z" fill="#ff5470" /><circle cx="-3" cy="-4" r="1" fill="#222" /><circle cx="3" cy="-5" r="1" fill="#222" /></g>
+        : <g transform="translate(16,-44)"><rect x="-4" y="-10" width="8" height="10" rx="2" fill="#fff" stroke="#bbb" /><path d="M4 -8 Q9 -6 4 -3" stroke="#bbb" fill="none" /></g>}
+    </>}
+    <rect x="-62" y="-18" width="124" height="6" rx="2" fill="#a86b35" opacity={snow ? .9 : 1} />
+    {snow && <path d="M-62 -18 Q0 -26 62 -18 Z" fill="#fff" />}
+  </g>;
+}
+function Bench({ est }) { return <g><ellipse cx="0" cy="4" rx="36" ry="5" fill="rgba(0,0,0,.14)" /><rect x="-30" y="-16" width="60" height="5" rx="2" fill="#b77a3d" /><rect x="-30" y="-30" width="60" height="5" rx="2" fill="#b77a3d" /><rect x="-30" y="-24" width="60" height="4" rx="2" fill="#a86b35" /><rect x="-26" y="-11" width="4" height="14" fill="#2f3b45" /><rect x="22" y="-11" width="4" height="14" fill="#2f3b45" />{est === 'hivern' && <path d="M-32 -30 Q0 -38 32 -30 Z M-32 -16 Q0 -22 32 -16 Z" fill="#fff" />}</g>; }
+function XmasTree() {
+  const bulbs = [[-10, -78, '#e5484d'], [9, -70, '#ffd93d'], [-16, -56, '#4dd2ff'], [14, -50, '#e5484d'], [-4, -46, '#c77dff'], [-22, -32, '#ffd93d'], [20, -28, '#4dd2ff'], [2, -24, '#e5484d'], [-10, -60, '#7fd18b'], [6, -36, '#ff8c42']];
+  return <g>
+    <ellipse cx="0" cy="4" rx="34" ry="7" fill="rgba(0,0,0,.18)" /><rect x="-6" y="-12" width="12" height="16" fill="#7a4a24" />
+    <polygon points="0,-104 -22,-68 22,-68" fill="#2b8a4f" /><polygon points="0,-86 -30,-42 30,-42" fill="#2f9a57" /><polygon points="0,-62 -38,-10 38,-10" fill="#35a85f" />
+    <path d="M-18 -74 Q0 -66 16 -76 M-26 -50 Q0 -40 26 -52 M-32 -22 Q0 -12 34 -24" stroke="#ffd93d" strokeWidth="2" fill="none" />
+    {bulbs.map(([x, y, c], i) => <circle key={i} cx={x} cy={y} r="3.4" fill={c} className="twinkle" style={{ animationDelay: i * .25 + 's' }} />)}
+    <polygon points="0,-118 4,-108 15,-108 6,-101 9,-90 0,-97 -9,-90 -6,-101 -15,-108 -4,-108" fill="#ffd93d" stroke="#e0a800" className="twinkle" />
+    <g transform="translate(-26,0)"><rect x="-9" y="-14" width="18" height="14" fill="#e5484d" /><rect x="-2" y="-14" width="4" height="14" fill="#ffd93d" /><path d="M-5 -14 Q0 -22 0 -14 Q0 -22 5 -14" stroke="#ffd93d" strokeWidth="2" fill="none" /></g>
+    <g transform="translate(26,0)"><rect x="-8" y="-12" width="16" height="12" fill="#4d96ff" /><rect x="-8" y="-8" width="16" height="3" fill="#fff" /></g>
+  </g>;
+}
+function Tio() {
+  return <g>
+    <ellipse cx="0" cy="3" rx="34" ry="6" fill="rgba(0,0,0,.16)" />
+    <line x1="10" y1="0" x2="16" y2="-16" stroke="#6b3e1c" strokeWidth="4" strokeLinecap="round" /><line x1="22" y1="0" x2="18" y2="-16" stroke="#6b3e1c" strokeWidth="4" strokeLinecap="round" />
+    <rect x="-30" y="-26" width="52" height="22" rx="11" fill="#8a5a2b" />
+    <path d="M-22 -26 Q-2 -38 22 -24 L22 -10 Q0 -2 -22 -6 Z" fill="#c9302c" /><path d="M-22 -6 Q0 -2 22 -10" stroke="#ffd93d" strokeWidth="2" fill="none" />
+    <ellipse cx="-30" cy="-15" rx="8" ry="11" fill="#d9a066" stroke="#8a5a2b" strokeWidth="2" /><ellipse cx="-30" cy="-15" rx="4" ry="6" fill="none" stroke="#b07a42" />
+    <g transform="translate(-36,-17)"><circle cx="-3" cy="-3" r="1.6" fill="#222" /><circle cx="3" cy="-3" r="1.6" fill="#222" /><path d="M-4 3 Q0 7 4 3" stroke="#222" strokeWidth="1.4" fill="none" /><circle cx="-5" cy="1" r="1.6" fill="#ff8fab" /><circle cx="5" cy="1" r="1.6" fill="#ff8fab" /></g>
+    <path d="M-42 -28 Q-34 -46 -22 -30 Z" fill="#c9302c" /><circle cx="-40" cy="-40" r="2.8" fill="#c9302c" />
+  </g>;
+}
+function Flamingo() {
+  return <g className="float"><ellipse cx="0" cy="6" rx="30" ry="6" fill="rgba(0,60,100,.18)" />
+    <path d="M-26 0 Q-26 -14 -4 -14 L18 -14 Q28 -14 26 0 Q14 8 -14 8 Q-26 8 -26 0 Z" fill="#ff8fc0" stroke="#e8457c" strokeWidth="2" />
+    <path d="M14 -12 Q22 -40 10 -50 Q2 -56 -4 -48" stroke="#ff8fc0" strokeWidth="7" fill="none" strokeLinecap="round" /><path d="M-4 -48 L-12 -44 L-6 -42 Z" fill="#333" /><circle cx="2" cy="-50" r="1.6" fill="#222" />
+    <path d="M-16 -10 Q-4 -18 8 -10" stroke="#fff" strokeWidth="2" fill="none" opacity=".7" />
+  </g>;
+}
+function Donut() { return <g className="float" style={{ animationDelay: '-1.3s' }}><ellipse cx="0" cy="5" rx="24" ry="5" fill="rgba(0,60,100,.18)" /><ellipse cx="0" cy="0" rx="22" ry="9" fill="#ffd1e3" stroke="#e8457c" strokeWidth="2" /><ellipse cx="0" cy="-1" rx="9" ry="3.5" fill="#4aa8dc" />{[-16, -8, 8, 16].map(x => <rect key={x} x={x} y={-6 + Math.abs(x) / 8} width="3" height="1.5" fill={x % 16 ? '#ffd93d' : '#7fd1ff'} transform={`rotate(${x * 3} ${x} 0)`} />)}</g>; }
 
 function RoomBox({ id, x, y, w, h, th, label, icon, badge, onOpen, children }) {
   const d = 20, db = 26;
@@ -1541,7 +1649,7 @@ function useViewBox(insets) {
   const calc = () => {
     const W = window.innerWidth, H = window.innerHeight;
     const mob = W < 700 && H > W;
-    const cb = mob ? { x: 196, y: 60, w: 830, h: 720 } : { x: -10, y: 12, w: 1220, h: 834 };
+    const cb = mob ? { x: 196, y: 60, w: 830, h: 720 } : { x: 4, y: 16, w: 1192, h: 796 };
     const top = insets.t || 0, bot = insets.b || 0, avail = Math.max(120, H - top - bot);
     const s = Math.min(W / cb.w, avail / cb.h);
     const vw = W / s, vh = H / s;
@@ -1567,7 +1675,7 @@ const CLOUDS = {
 
 function HotelScene({ onOpen, badges, next, bubble, onMascot, onNormes, nSanc, env, insets }) {
   const vb = useViewBox(insets);
-  const { est, temps, light, twi, pDia, pNit } = env;
+  const { est, temps, light, twi, pDia, pNit, nadal } = env;
   const dark = 1 - light;
   const TH = {
     escenari: { back: '#3b2a63', ceil: '#2a1d48', floor: '#6b4a2b', side: '#4a3678', side2: '#41306b', acc: '#7c4dff' },
@@ -1675,6 +1783,7 @@ function HotelScene({ onOpen, badges, next, bubble, onMascot, onNormes, nSanc, e
       {/* Nit: la façana s'enfosqueix però les habitacions queden enceses */}
       {nightOp > 0.01 && <path d={R} fill="#0d1636" opacity={nightOp} pointerEvents="none" />}
       {dark > 0.05 && [[972, 270], [972, 360], [972, 500], [972, 580]].map(([wx, wy], i) => <polygon key={'w' + i} points={`${wx},${wy} ${wx + 26},${wy - 15} ${wx + 26},${wy + 30} ${wx},${wy + 45}`} fill="#ffd76a" opacity={dark} pointerEvents="none" />)}
+      {nadal && <g>{Array.from({ length: 34 }).map((_, i) => { const x = 216 + i * 23; return <circle key={i} cx={x} cy={243 + (i % 2) * 4} r="5" fill={['#e5484d', '#ffd93d', '#4dd2ff', '#7fd18b', '#c77dff'][i % 5]} className="twinkle" style={{ animationDelay: (i % 5) * .3 + 's' }} />; })}</g>}
       {/* Golfes: Qui som (la mascota treu el cap per la finestra) */}
       <g transform="translate(828,196)">
         <g className="room-g" role="button" tabIndex="0" aria-label="Qui som" onClick={() => onOpen('quisom')} onKeyDown={e => { if (e.key === 'Enter') onOpen('quisom'); }}>
@@ -1725,10 +1834,27 @@ function HotelScene({ onOpen, badges, next, bubble, onMascot, onNormes, nSanc, e
         <circle cx="-5" cy="-47" r="1.8" fill="#222" /><circle cx="5" cy="-47" r="1.8" fill="#222" /><path d="M0 -43 L10 -41 L0 -40 Z" fill="#ff8c42" /><circle cy="-18" r="2" fill="#222" /><circle cy="-8" r="2" fill="#222" />
         <line x1="-18" y1="-24" x2="-34" y2="-36" stroke="#7a5233" strokeWidth="2.5" /><line x1="18" y1="-24" x2="34" y2="-34" stroke="#7a5233" strokeWidth="2.5" />
       </g>}
-      {est === 'tardor' && <g className="noclick"><text x="884" y="806" fontSize="26">🎃</text><text x="916" y="812" fontSize="20">🎃</text><text x="300" y="820" fontSize="18">🍄</text></g>}
+      {est === 'tardor' && !nadal && <g className="noclick"><text x="884" y="806" fontSize="26">🎃</text><text x="916" y="812" fontSize="20">🎃</text><text x="300" y="820" fontSize="18">🍄</text></g>}
       {est === 'estiu' && <g className="noclick" transform="translate(330,800)"><line x1="0" y1="0" x2="4" y2="-62" stroke="#8a5a2b" strokeWidth="3" /><path d="M-36 -54 Q4 -86 44 -54 Z" fill="#ff7ab0" /><path d="M-36 -54 Q-16 -62 4 -62 L4 -54 Z" fill="#fff" opacity=".6" /><path d="M4 -62 Q24 -62 44 -54 L4 -54 Z" fill="#ffd93d" /></g>}
       {est === 'primavera' && <g className="noclick"><text x="300" y="806" fontSize="18">🌷</text><text x="320" y="812" fontSize="18">🌷</text><text x="340" y="806" fontSize="18">🌼</text></g>}
 
+      {/* Més jardí: matolls, roques, pícnic, banc i animals */}
+      <g className="noclick">
+        {[[-470, 712, 1], [-300, 800, 1.1], [-40, 808, .9], [270, 770, .8], [1180, 712, .9], [1640, 742, 1.1], [1880, 706, 1], [2040, 796, 1.2], [-760, 760, 1.1]].map(([bx, by, bs], i) => <Bush key={i} x={bx} y={by} s={bs} est={est} />)}
+        <Rock x={1088} y={850} s={1} est={est} /><Rock x={1750} y={806} s={.8} est={est} /><Rock x={-120} y={772} s={.7} est={est} /><Rock x={1010} y={712} s={.6} est={est} />
+        <Tree x={-640} y={820} s={1.1} tone={1} est={est} /><Pine x={1900} y={800} s={1.15} est={est} /><Tree x={2080} y={720} s={1.1} est={est} /><Pine x={-860} y={700} s={1.1} est={est} /><Tree x={-940} y={600} s={.6} est={est} /><Pine x={1980} y={600} s={.55} est={est} />
+        <g transform="translate(-250,810)"><Picnic est={est} /></g>
+        <g transform="translate(1480,744)"><Bench est={est} /></g>
+        <g transform="translate(140,520)"><Cat sleep={dark > .5} /></g>
+        {est !== 'hivern' && <g transform="translate(1476,718)"><Cat sleep={dark > .5} /></g>}
+        <g transform="translate(-140,846)"><g className="roam" style={{ '--d': '240px', animationDuration: '17s' }}><g className="roam-flip" style={{ animationDuration: '17s' }}><Dog /></g></g></g>
+        {est !== 'hivern' && <g transform="translate(-460,764)"><g className="roam" style={{ '--d': '120px', animationDuration: '11s' }}><g className="roam-flip" style={{ animationDuration: '11s' }}><Rabbit /></g></g></g>}
+        {est !== 'hivern' && <g transform="translate(1560,700)"><g className="roam" style={{ '--d': '90px', animationDuration: '9s', animationDelay: '-3s' }}><g className="roam-flip" style={{ animationDuration: '9s', animationDelay: '-3s' }}><Rabbit c="#c9a27a" /></g></g></g>}
+        {est === 'tardor' && <g transform="translate(1130,672)"><Squirrel /></g>}
+        {(est === 'primavera' || est === 'estiu') && light > .4 && [[310, 742, '#ff7ab0', 0], [-160, 752, '#ffd93d', 1.2], [1440, 690, '#7fd1ff', 2.1], [80, 780, '#c77dff', .6]].map(([fx, fy, c, d], i) => <g key={i} transform={`translate(${fx},${fy})`}><Butterfly c={c} d={d} /></g>)}
+        {est === 'estiu' && <><g transform="translate(1330,818)"><Flamingo /></g><g transform="translate(1170,846)"><Donut /></g><g transform="translate(1560,836) scale(.9)"><Donut /></g><g transform="translate(-170,790)"><circle r="9" fill="#fff" /><path d="M-9 0 A9 9 0 0 1 0 -9 L0 0 Z" fill="#e5484d" /><path d="M0 9 A9 9 0 0 1 -9 0 L0 0 Z" fill="#4d96ff" /><path d="M9 0 A9 9 0 0 1 0 9 L0 0 Z" fill="#ffd93d" /></g></>}
+        {nadal && <><g transform="translate(318,776)"><XmasTree /></g><g transform="translate(392,792)"><Tio /></g></>}
+      </g>
       {/* La farola de les normes i sancions */}
       <g className="room-g" role="button" tabIndex="0" aria-label="Normes i sancions" onClick={onNormes} onKeyDown={e => { if (e.key === 'Enter') onNormes(); }}>
         {dark > 0.05 && <circle cx="200" cy="462" r="120" fill="url(#lampG)" opacity={dark * .8} pointerEvents="none" />}
@@ -1843,7 +1969,7 @@ function HotelWorld({ onOpen }) {
   const hudRef = useRef(null), dockRef = useRef(null);
   const [insets, setInsets] = useState({ t: 64, b: 76 });
   useEffect(() => {
-    const m = () => { const h = hudRef.current, d = dockRef.current; if (!h || !d) return; const t = Math.round(h.getBoundingClientRect().bottom + 6), b = Math.round(window.innerHeight - d.getBoundingClientRect().top + 6); setInsets(o => o.t === t && o.b === b ? o : { t, b }); };
+    const m = () => { const h = hudRef.current, d = dockRef.current; if (!h || !d) return; const t = Math.round(h.getBoundingClientRect().bottom + 6), b = Math.round((window.innerHeight - d.getBoundingClientRect().top) * .7); setInsets(o => o.t === t && o.b === b ? o : { t, b }); };
     m(); const ro = window.ResizeObserver ? new ResizeObserver(m) : null; if (ro) { ro.observe(hudRef.current); ro.observe(dockRef.current); } window.addEventListener('resize', m);
     return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', m); };
   }, []);
@@ -1886,6 +2012,7 @@ function HotelWorld({ onOpen }) {
           <div className="env-lbl">Previsualitza (només en aquesta pantalla):</div>
           <div className="env-row">{ovBtn('estacio', '', 'Auto')}{Object.keys(ESTACIONS).map(k => ovBtn('estacio', k, ESTACIONS[k].icon + ' ' + ESTACIONS[k].nom))}</div>
           <div className="env-row">{ovBtn('temps', '', 'Auto')}{Object.keys(TEMPS).map(k => ovBtn('temps', k, TEMPS[k].icon + ' ' + TEMPS[k].nom))}</div>
+          <div className="env-row">{ovBtn('nadal', '', 'Nadal auto')}{ovBtn('nadal', 'si', '🎄 Nadal')}{ovBtn('nadal', 'no', 'Sense Nadal')}</div>
           <div className="env-row">{ovBtn('hora', '', 'Ara')}{ovBtn('hora', 'dia', '🌞 Migdia')}{ovBtn('hora', 'posta', '🌇 Posta')}{ovBtn('hora', 'nit', '🌙 Nit')}</div>
         </div>
       )}
