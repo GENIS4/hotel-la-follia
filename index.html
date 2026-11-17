@@ -124,8 +124,12 @@ const PRESS_COL = { Esborrany: { c: '#5f6673', bg: '#eceff3' }, Enviat: { c: '#1
 
 let D = null; // dades vigents (s'actualitza a cada render de l'App)
 
-const isDone = b => b.estat !== 'Cancel·lada' && (b.tancat || ESTATS.indexOf(b.estat) >= ESTATS.indexOf('Bolo realitzat'));
-const cobrat = b => b.cobrat === true || (b.cobrat === undefined && b.estat === 'Pagada');
+/* Els comptes comencen a «iniciComptes» (per defecte l'1/1/2027): tot el que és anterior ja està fet, facturat i cobrat, i no suma diners */
+const iniciComptes = () => ((D && D.config && D.config.iniciComptes) || '2027-01-01');
+const historic = b => !!(b && b.data) && b.data < iniciComptes();
+const dinsComptes = dt => !dt || dt >= iniciComptes();
+const isDone = b => b.estat !== 'Cancel·lada' && (b.tancat || historic(b) || ESTATS.indexOf(b.estat) >= ESTATS.indexOf('Bolo realitzat'));
+const cobrat = b => b.estat !== 'Cancel·lada' && (historic(b) || b.cobrat === true || (b.cobrat === undefined && b.estat === 'Pagada'));
 function dateState(b) { if (!b.data) return 'futur'; const t = todayISO(); return b.data < t ? 'passat' : b.data === t ? 'avui' : 'futur'; }
 function statusKey(b) {
   if (b.estat === 'Cancel·lada') return 'cancellat';
@@ -303,17 +307,17 @@ function avisosPendents(bolos) {
 function autoMoviments(d) {
   const out = [];
   d.bolos.forEach(b => {
-    if (!isDone(b) || !cobrat(b)) return;
+    if (!isDone(b) || !cobrat(b) || historic(b)) return;
     const t = r2(calc(b).total); if (!(t > 0)) return;
     out.push({ id: 'auto-bolo-' + b.id, auto: 'bolo', refId: b.id, tipus: 'ingres', data: b.dataCobrament || b.data || '', concepte: 'Cobrament bolo: ' + boloNom(b), import: t, categoria: 'Bolo', nota: b.numFactura ? 'Factura ' + b.numFactura : 'Sense factura' });
   });
   (d.dietes || []).forEach(dt => {
-    if (dt.estat !== 'Pagada') return;
+    if (dt.estat !== 'Pagada' || !dinsComptes(dt.dataPagament || dt.data)) return;
     const t = r2(dietaTotals(dt).total); if (!(t > 0)) return;
     out.push({ id: 'auto-dieta-' + dt.id, auto: 'dieta', refId: dt.id, tipus: 'despesa', data: dt.dataPagament || dt.data || '', concepte: 'Dieta ' + dt.num + ' · ' + (dt.perceptor.nom || ''), import: t, categoria: 'Transport', nota: '' });
   });
   ((d.grup || {}).sancions || []).forEach(x => {
-    if (!x.pagada || !(num(x.import) > 0)) return;
+    if (!x.pagada || !(num(x.import) > 0) || !dinsComptes(x.dataPagament || x.data)) return;
     const m = d.musics.find(y => y.id === x.musicId), n = ((d.grup.normes || []).find(y => y.id === x.normaId) || {});
     out.push({ id: 'auto-multa-' + x.id, auto: 'multa', refId: x.id, tipus: 'ingres', data: x.dataPagament || x.data || '', concepte: 'Multa: ' + (m ? m.nom : '?') + ' · ' + (n.norma || 'norma'), import: r2(num(x.import)), categoria: 'Multes del pot', nota: '' });
   });
@@ -330,6 +334,7 @@ function auditar(d) {
   const out = [], t = todayISO();
   const add = (nivell, titol, detall, bolo, codi) => out.push({ nivell, titol, detall, bolo, codi: codi || titol });
   d.bolos.forEach(b => {
+    if (historic(b)) return;
     const nom = boloNom(b), c = calc(b), dd = daysTo(b.data);
     if (b.estat === 'Cancel·lada') {
       if (b.numFactura) add('error', nom + ': cancel·lat però té factura', 'El bolo està cancel·lat i té la factura ' + b.numFactura + '. Si no s’ha d’anul·lar la factura, reactiva el bolo; si s’anul·la, cal una factura rectificativa i treure el número.', b, 'cancelFactura');
@@ -368,6 +373,7 @@ const DEFAULT_CONFIG = () => ({
   fiscal: { ivaDefault: 0, retencioDefault: 0, exempt: true, exempcioText: "Activitat exempta d'IVA segons l'article u.20.14è.c (les representacions musicals) de la llei 37/1992." },
   numeracio: { proxim: 1, any: new Date().getFullYear() },
   dataFacturaMode: 'posterior',
+  iniciComptes: '2027-01-01',
   km: { origen: '', preuKm: 0.26, anadaTornada: true },
 });
 function seedMaterial() {
@@ -1960,7 +1966,7 @@ function HotelWorld({ onOpen }) {
     oficina: data.bolos.filter(b => isDone(b) && !cobrat(b)).length,
   }), [data]);
   const Y = String(new Date().getFullYear());
-  const cobratAny = data.bolos.filter(b => isDone(b) && cobrat(b) && (b.data || '').startsWith(Y)).reduce((s, b) => s + calc(b).total, 0);
+  const cobratAny = data.bolos.filter(b => isDone(b) && cobrat(b) && !historic(b) && (b.data || '').startsWith(Y)).reduce((s, b) => s + calc(b).total, 0);
   const upcoming = data.bolos.filter(isUpcoming).sort(byDate);
   const pendents = data.bolos.filter(b => statusKey(b) === 'passat').length;
   const lines = useMemo(() => mascotLines(data), [data]);
@@ -2722,7 +2728,7 @@ function BolosRoom({ mod }) {
    11. OFICINA: EL GESTOR DE BOLOS (amb el format de l'hotel)
    ===================================================================== */
 const greeting = () => { const h = new Date().getHours(); return h < 13 ? 'Bon dia' : h < 20 ? 'Bona tarda' : 'Bona nit'; };
-const yearsOf = bolos => [...new Set([...bolos.map(b => (b.data || '').slice(0, 4)).filter(Boolean), String(new Date().getFullYear())])].sort().reverse();
+const yearsOf = bolos => [...new Set([...bolos.map(b => (b.data || '').slice(0, 4)).filter(Boolean), String(new Date().getFullYear()), iniciComptes().slice(0, 4)])].filter(y => y >= iniciComptes().slice(0, 4)).sort().reverse();
 
 /* ---------- Calendari general ---------- */
 function OfCalendari({ openBolo }) {
@@ -2766,8 +2772,8 @@ function OfBolos({ openBolo }) {
   const [q, setQ] = useState(''); const [fy, setFy] = useState(''); const [fe, setFe] = useState(''); const [fc, setFc] = useState(''); const [fm, setFm] = useState('');
   const Y = String(new Date().getFullYear());
   const thisYear = data.bolos.filter(b => (b.data || '').startsWith(Y));
-  const facturat = thisYear.filter(b => b.estat !== 'Cancel·lada').reduce((s, b) => s + calc(b).total, 0);
-  const pendFact = data.bolos.filter(b => b.estat === 'Factura enviada' || b.estat === 'Factura generada').length;
+  const facturat = thisYear.filter(b => b.estat !== 'Cancel·lada' && !historic(b)).reduce((s, b) => s + calc(b).total, 0);
+  const pendFact = data.bolos.filter(b => !historic(b) && (b.estat === 'Factura enviada' || b.estat === 'Factura generada')).length;
   const proxims = data.bolos.filter(b => b.estat !== 'Cancel·lada' && b.data && b.data >= todayISO()).sort(byDate);
   const next = proxims[0];
   const avisos = avisosPendents(data.bolos);
@@ -2836,8 +2842,8 @@ function OfFactures({ openBolo }) {
   const { data, patch } = useApp();
   const [fy, setFy] = useState(String(new Date().getFullYear()));
   const fact = data.bolos.filter(b => b.numFactura && (!fy || (b.dataFactura || b.data || '').startsWith(fy))).sort((a, b) => String(b.dataFactura || '').localeCompare(String(a.dataFactura || '')) || String(b.numFactura).localeCompare(String(a.numFactura)));
-  const senseFact = data.bolos.filter(b => isDone(b) && !b.numFactura && (!fy || (b.data || '').startsWith(fy))).sort(byDate);
-  const tot = fact.reduce((a, b) => { const c = calc(b); a.base += c.base; a.total += c.total; if (cobrat(b)) a.cob += c.total; else a.pen += c.total; return a; }, { base: 0, total: 0, cob: 0, pen: 0 });
+  const senseFact = data.bolos.filter(b => isDone(b) && !historic(b) && !b.numFactura && (!fy || (b.data || '').startsWith(fy))).sort(byDate);
+  const tot = fact.filter(b => !historic(b)).reduce((a, b) => { const c = calc(b); a.base += c.base; a.total += c.total; if (cobrat(b)) a.cob += c.total; else a.pen += c.total; return a; }, { base: 0, total: 0, cob: 0, pen: 0 });
   return (
     <div className="card">
       <div className="flex flex-wrap gap-2 items-center mb-3">
@@ -3297,7 +3303,7 @@ function OfConfig() {
       <div className="card mb-4"><h2>🧾 Fiscal i numeració</h2>
         <div className="grid sm:grid-cols-3 gap-2">{I('fiscal', 'ivaDefault', 'IVA % per defecte', 'number')}{I('fiscal', 'retencioDefault', 'Retenció % per defecte', 'number')}<Field label="Exempt d’IVA per defecte"><select className="inp" value={String(c.fiscal.exempt)} onChange={e => S('fiscal', 'exempt', e.target.value === 'true')}><option value="true">Sí</option><option value="false">No</option></select></Field></div>
         <Field label="Text de l’exempció" className="mt-2"><textarea className="inp" value={c.fiscal.exempcioText} onChange={e => S('fiscal', 'exempcioText', e.target.value)} /></Field>
-        <div className="grid sm:grid-cols-3 gap-2 mt-2">{I('numeracio', 'proxim', 'Pròxim número de factura', 'number')}{I('numeracio', 'any', 'Any de la numeració', 'number')}<Field label="Data de factura per defecte"><select className="inp" value={c.dataFacturaMode} onChange={e => setC(x => ({ ...x, dataFacturaMode: e.target.value }))}><option value="posterior">Endemà del bolo</option><option value="actual">Data actual</option></select></Field></div>
+        <div className="grid sm:grid-cols-3 gap-2 mt-2">{I('numeracio', 'proxim', 'Pròxim número de factura', 'number')}{I('numeracio', 'any', 'Any de la numeració', 'number')}<Field label="Els comptes comencen el"><input className="inp" type="date" value={c.iniciComptes || '2027-01-01'} onChange={e => setC(x => ({ ...x, iniciComptes: e.target.value }))} /></Field><Field label="Data de factura per defecte"><select className="inp" value={c.dataFacturaMode} onChange={e => setC(x => ({ ...x, dataFacturaMode: e.target.value }))}><option value="posterior">Endemà del bolo</option><option value="actual">Data actual</option></select></Field></div>
         <p className="text-xs opacity-70 font-bold">Si ja havíeu emès factures amb el gestor antic, posa aquí el número que toca ara perquè no es repeteixin.</p></div>
       <button className="btn-game" onClick={save}>💾 Desar configuració</button>
     </>
@@ -3312,16 +3318,16 @@ function OfMoviments({ openBolo }) {
   const revisio = auditar(data);
   const grups = []; revisio.forEach(x => { let g = grups.find(y => y.codi === x.codi); if (!g) { g = { codi: x.codi, nivell: x.nivell, items: [] }; grups.push(g); } g.items.push(x); });
   const [veureAvisos, setVeureAvisos] = useState(true);
-  const blank = () => ({ id: uid(), data: todayISO(), tipus: 'despesa', concepte: '', import: '', categoria: '', nota: '' });
+  const blank = () => ({ id: uid(), data: todayISO() < iniciComptes() ? iniciComptes() : todayISO(), tipus: 'despesa', concepte: '', import: '', categoria: '', nota: '' });
   const [f, setF] = useState(blank);
-  const [fy, setFy] = useState(String(new Date().getFullYear())); const [fm, setFm] = useState(''); const [ft, setFt] = useState('');
+  const [fy, setFy] = useState(String(Math.max(new Date().getFullYear(), +iniciComptes().slice(0, 4) || 0))); const [fm, setFm] = useState(''); const [ft, setFt] = useState('');
   const editing = data.moviments.some(x => x.id === f.id);
   const set = k => e => setF(x => ({ ...x, [k]: e.target.value }));
   const save = () => { if (!f.concepte.trim()) return toast('Escriu el concepte'); if (!editing && f.tipus === 'ingres' && /bolo|actuaci/i.test(f.concepte)) toast('Recorda: els cobraments de bolos ja s’apunten sols en marcar el bolo com a cobrat. Comprova que no el dupliquis.'); if (!(num(f.import) > 0)) return toast('Posa un import més gran que 0'); upsert('moviments', { ...f, import: num(f.import) }); toast(editing ? 'Moviment actualitzat ✔' : (f.tipus === 'ingres' ? 'Ingrés apuntat 💰' : 'Despesa apuntada 🧾')); setF(blank()); };
-  const anys = [...new Set([...data.moviments.map(x => (x.data || '').slice(0, 4)).filter(Boolean), String(new Date().getFullYear())])].sort().reverse();
-  const list = data.moviments.filter(x => (!fy || (x.data || '').startsWith(fy)) && (!fm || (x.data || '').slice(5, 7) === fm) && (!ft || x.tipus === ft)).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  const anys = [...new Set([...data.moviments.map(x => (x.data || '').slice(0, 4)).filter(Boolean), String(new Date().getFullYear()), iniciComptes().slice(0, 4)])].filter(y => y >= iniciComptes().slice(0, 4)).sort().reverse();
+  const list = data.moviments.filter(x => dinsComptes(x.data) && (!fy || (x.data || '').startsWith(fy)) && (!fm || (x.data || '').slice(5, 7) === fm) && (!ft || x.tipus === ft)).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   const ing = list.filter(x => x.tipus === 'ingres').reduce((t, x) => t + num(x.import), 0), desp = list.filter(x => x.tipus === 'despesa').reduce((t, x) => t + num(x.import), 0);
-  const totalSaldo = data.moviments.reduce((t, x) => t + (x.tipus === 'ingres' ? 1 : -1) * num(x.import), 0);
+  const totalSaldo = data.moviments.filter(x => dinsComptes(x.data)).reduce((t, x) => t + (x.tipus === 'ingres' ? 1 : -1) * num(x.import), 0);
   const expCSV = () => saveFile('moviments_' + (fy || 'tots') + '.csv', '﻿' + [['Data', 'Tipus', 'Concepte', 'Categoria', 'Import', 'Nota'], ...list.map(x => [fmtDate(x.data), x.tipus === 'ingres' ? 'Ingrés' : 'Despesa', x.concepte, x.categoria || '', (x.tipus === 'ingres' ? '' : '-') + num(x.import).toFixed(2).replace('.', ','), x.nota || ''])].map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\n'), 'text/csv');
   return (
     <>
@@ -3345,7 +3351,7 @@ function OfMoviments({ openBolo }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div className="kpi" style={{ background: '#29a35a' }}><i>💰</i><b>{eur(ing)}</b><span>Ingressos {fy || ''}{fm ? ' · ' + MESOS[+fm - 1] : ''}</span></div>
         <div className="kpi" style={{ background: '#e5484d' }}><i>🧾</i><b>{eur(desp)}</b><span>Despeses {fy || ''}{fm ? ' · ' + MESOS[+fm - 1] : ''}</span></div>
-        <div className="kpi" style={{ background: totalSaldo >= 0 ? '#2f80ed' : '#a82d31' }}><i>🏦</i><b>{eur(totalSaldo)}</b><span>Saldo total (tots els moviments)</span></div>
+        <div className="kpi" style={{ background: totalSaldo >= 0 ? '#2f80ed' : '#a82d31' }}><i>🏦</i><b>{eur(totalSaldo)}</b><span>Saldo des del {fmtDate(iniciComptes())}</span></div>
       </div>
       <div className="card mb-4">
         <h2>{editing ? '✏️ Editar moviment' : '✍️ Apuntar un moviment'}</h2>
