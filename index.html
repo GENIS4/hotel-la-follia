@@ -504,11 +504,18 @@ function pdfKit() {
 }
 
 /* --- CONTRACTE --- */
+const MESOS_CA = ['gener', 'febrer', 'març', 'abril', 'maig', 'juny', 'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'];
+const dataContracte = iso => { if (!iso) return '___ de __________ de ____'; const [y, m, d] = iso.split('-').map(Number); const mes = MESOS_CA[m - 1]; return d + (/^[aeiou]/.test(mes) ? " d'" : ' de ') + mes + ' de ' + y; };
 function contractParas(b, cli) {
   const g = D.config.grup; const B = t => ({ b: t });
   const dataBolo = b.data ? fmtDate(b.data) : '__/__/____';
   const ivaTxt = (b.ivaExempt !== false && D.config.fiscal.exempt) ? "exempt d'IVA" : "amb IVA del " + (b.iva || D.config.fiscal.ivaDefault) + '%';
   const lloc = b.lloc || '____________', ini = b.inici || '__:__', fi = b.fi || '__:__';
+  const poble = (b.municipi || cli.poblacio || (typeof nomMunicipi === 'function' ? nomMunicipi(cli.nom) : '') || '____________').trim();
+  const horaC = (b.inici || b.convocatoria || '__:__').replace(/h$/i, '');
+  const rec = String(b.recorregut || '').trim(), parts = rec.split(/\s*(?:→|->|—|–| - | fins a )\s*/).filter(Boolean);
+  const onC = parts.length >= 2 ? ', des de ' + parts[0] + ' fins a ' + parts[parts.length - 1] : rec ? ', ' + (/^(pel|pels|per|des|de |a |al )/i.test(rec) ? rec : /^els? /i.test(rec) ? 'p' + rec : 'per ' + rec) : b.lloc ? ', a ' + b.lloc : b.modalitat === 'xaranga' ? ', pels carrers de la vila' : '';
+  const alPoble = 'al poble ' + (/^[aeiouàèéíòóúh]/i.test(poble) ? "d'" : 'de ') + poble;
   return [
     { al: 'center', segs: [B('CONTRACTE ENTRE ' + g.nomFiscal.toUpperCase() + ' I ' + (cli.nom || '').toUpperCase())] },
     { segs: ["Reunits, d'una part l'", B((cli.tractamentRep || 'Il·lm./a. Sr./Sra.') + ' ' + (cli.representant || '____________')), ' que actua com a representant de ', B(cli.nom || '____________'), ' amb domicili a ' + (cli.adreca || '____________') + ', amb CP ' + (cli.cp || '_____') + ', i que té el ', B('CIF: ' + (cli.cif || '____________')), " que en aquest contracte s'anomenarà ", B('EMPRESA ORGANITZADORA'), '.'] },
@@ -516,7 +523,7 @@ function contractParas(b, cli) {
     { segs: [B('MANIFESTEN')] },
     { segs: ['Reconèixer-se mútuament prou capacitat jurídica, i s’avenen a subscriure el present contracte, que es regirà per les següents:'] },
     { segs: [B('CLÀUSULES')] },
-    { segs: [B('1a. '), "L'empresa contracta " + g.nom + " amb la finalitat de fer una exhibició cultural a " + lloc + ', a les ' + ini + 'h, el pròxim dia ' + dataBolo + ' a ' + (cli.poblacio || b.municipi || '____________') + '.'] },
+    { segs: [B('1a. '), "L'empresa contracta " + g.nom + " amb la finalitat de fer una exhibició cultural a " + poble + ', a les ' + horaC + 'h' + onC + ', el pròxim dia ' + dataContracte(b.data) + ' ' + alPoble + '.'] },
     { segs: [B('2a. '), "La manutenció dels membres de l'associació (aigües) anirà a càrrec de L'ORGANITZADOR. De no aportar-les es facturaran a banda del preu pactat."] },
     { segs: [B('3a. '), "La durada de l'exhibició cultural serà de " + ini + ' a ' + fi + '.'] },
     { segs: [B('4a. '), "L'import de l'actuació és de ", B(eur(b.import)), ' (' + euroText(parseFloat(b.import) || 0) + '), ' + ivaTxt + ', que s’abonaran al número de compte ' + g.iban + " en un termini de 15 a 30 dies naturals després de l'exhibició. Passat el termini acordat, hi haurà una penalització de 20€ per dia. Totes les despeses ocasionades per un hipotètic impagament així com la posterior reclamació aniran a càrrec de l'organitzador."] },
