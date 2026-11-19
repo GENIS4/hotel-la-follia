@@ -129,7 +129,8 @@ const iniciComptes = () => ((D && D.config && D.config.iniciComptes) || '2027-01
 const historic = b => !!(b && b.data) && b.data < iniciComptes();
 const dinsComptes = dt => !dt || dt >= iniciComptes();
 const isDone = b => b.estat !== 'Cancel·lada' && (b.tancat || historic(b) || ESTATS.indexOf(b.estat) >= ESTATS.indexOf('Bolo realitzat'));
-const cobrat = b => b.estat !== 'Cancel·lada' && (historic(b) || b.cobrat === true || (b.cobrat === undefined && b.estat === 'Pagada'));
+/* Bolos anteriors als comptes: cobrats per defecte, tret que s'hagin marcat expressament com a pendents (cobrat: false) */
+const cobrat = b => b.estat !== 'Cancel·lada' && (historic(b) ? b.cobrat !== false : (b.cobrat === true || (b.cobrat === undefined && b.estat === 'Pagada')));
 function dateState(b) { if (!b.data) return 'futur'; const t = todayISO(); return b.data < t ? 'passat' : b.data === t ? 'avui' : 'futur'; }
 function statusKey(b) {
   if (b.estat === 'Cancel·lada') return 'cancellat';
@@ -317,7 +318,7 @@ function avisosPendents(bolos) {
 function autoMoviments(d) {
   const out = [];
   d.bolos.forEach(b => {
-    if (!isDone(b) || !cobrat(b) || historic(b)) return;
+    if (!isDone(b) || !cobrat(b) || (historic(b) && !(b.dataCobrament && b.dataCobrament >= iniciComptes()))) return;
     const t = r2(calc(b).total); if (!(t > 0)) return;
     out.push({ id: 'auto-bolo-' + b.id, auto: 'bolo', refId: b.id, tipus: 'ingres', data: b.dataCobrament || b.data || '', concepte: 'Cobrament bolo: ' + boloNom(b), import: t, categoria: 'Bolo', nota: b.numFactura ? 'Factura ' + b.numFactura : 'Sense factura' });
   });
@@ -746,6 +747,11 @@ function useStore(role) {
   const canEdit = role === 'admin' || role === 'editor';
   D = data;
   useEffect(() => { if (!ready || !canEdit) return; const r = reconcile(data); if (r !== data) setData(r); }, [data, ready]);
+  /* Un sol cop: del 2026 només queden pendents de cobrar Linyola i Breda */
+  useEffect(() => {
+    if (!ready || !canEdit || empty || !data.bolos.length || (data.config && data.config.migrCobr2026)) return;
+    setData(d => ({ ...d, config: { ...d.config, migrCobr2026: true }, bolos: d.bolos.map(b => (b.data || '').startsWith('2026') && b.estat !== 'Cancel·lada' && /linyola|breda/.test(normNom(boloNom(b) + ' ' + (b.municipi || ''))) ? { ...b, cobrat: false, dataCobrament: '' } : b) }));
+  }, [ready, canEdit, empty, data.bolos.length, data.config && data.config.migrCobr2026]);
 
   // ---- Lectura en temps real
   useEffect(() => {
