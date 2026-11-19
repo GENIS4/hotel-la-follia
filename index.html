@@ -384,6 +384,7 @@ const DEFAULT_CONFIG = () => ({
   numeracio: { proxim: 1, any: new Date().getFullYear() },
   dataFacturaMode: 'posterior',
   iniciComptes: '2027-01-01',
+  drive: { carpeta: 'LA FOLLIA', auto: false },
   km: { origen: '', preuKm: 0.26, anadaTornada: true },
 });
 function seedMaterial() {
@@ -2561,15 +2562,19 @@ function BoloFitxa({ bolo, tab0, onClose }) {
     setPreview('factura'); toast('Factura generada amb número definitiu');
   };
   const dlContract = async (fmt) => {
+    if (driveCfg().auto) { try { await driveToken(); } catch (e) { } }
     const fn = (b.data || 'sense-data') + '_' + safeName(cli.nom) + '_Contracte';
     if (fmt === 'pdf') { if (!jsPDFok()) return toast('El generador de PDF no s’ha carregat. Descarrega el Word.'); await saveFile(fn + '.pdf', contractPDF(b, cli).output('blob')); }
     else await saveFile(fn + '.docx', contractDocx(b, cli));
     patch('bolos', b.id, x => ({ estat: advanceTo(x, 'Contracte generat'), dataContracte: x.dataContracte || todayISO() }));
+    if (driveCfg().auto && driveTok) driveDesaContracte(b, cli, { patch, toast });
   };
   const dlInvoice = async (fmt) => {
+    if (driveCfg().auto) { try { await driveToken(); } catch (e) { } }
     const fn = b.dataFactura + '_Factura-' + String(b.numFactura).replace('/', '-') + '_' + safeName(cli.nom);
     if (fmt === 'pdf') { if (!jsPDFok()) return toast('El generador de PDF no s’ha carregat. Descarrega el Word.'); await saveFile(fn + '.pdf', invoicePDF(b, cli).output('blob')); }
     else await saveFile(fn + '.docx', invoiceDocx(b, cli));
+    if (driveCfg().auto && driveTok) driveDesaFactura(b, cli, { patch, toast });
   };
   const addContractDocs = async e => {
     const files = [...e.target.files]; const docs = [];
@@ -2644,6 +2649,7 @@ function BoloFitxa({ bolo, tab0, onClose }) {
             <button className="btn-game sm ghost" disabled={miss.length > 0} onClick={() => setPreview(preview === 'contracte' ? null : 'contracte')}>👁️ Previsualitzar</button>
             <button className="btn-game sm blue" disabled={miss.length > 0} onClick={() => dlContract('docx')}>⬇️ Word</button>
             <button className="btn-game sm blue" disabled={miss.length > 0} onClick={() => dlContract('pdf')}>⬇️ PDF</button>
+            {miss.length === 0 && <DriveBtns doc={b.drive && b.drive.contracte} onSave={async () => { await driveDesaContracte(b, cli, { patch, toast }); patch('bolos', b.id, x => ({ estat: advanceTo(x, 'Contracte generat'), dataContracte: x.dataContracte || todayISO() })); }} />}
             <button className="btn-game sm orange" onClick={() => patch('bolos', b.id, x => ({ estat: advanceTo(x, 'Contracte enviat') }))}>📤 Marcar enviat</button>
             <button className="btn-game sm" onClick={() => patch('bolos', b.id, x => ({ estat: advanceTo(x, 'Contracte signat'), confirmacio: 'confirmat' }))}>✍️ Marcar signat</button>
           </div>
@@ -2654,7 +2660,7 @@ function BoloFitxa({ bolo, tab0, onClose }) {
           {preview === 'contracte' && cli && <div className="paper mt-3" dangerouslySetInnerHTML={{ __html: contractHTML(b, cli) }} />}
         </div>
         <div className="card" style={{ background: '#fff' }}>
-          <div className="flex items-center gap-2 flex-wrap mb-2"><h2 className="m-0 flex-1">🧾 Factura</h2>{b.numFactura ? <span className="badge" style={{ color: '#1f6fd6', background: '#e3efff' }}>Núm. {b.numFactura}</span> : <span className="badge" style={{ color: '#5f6673', background: '#eceff3' }}>Sense factura · proper número {nextInvoiceNumber()}</span>}</div>
+          <div className="flex items-center gap-2 flex-wrap mb-2"><h2 className="m-0 flex-1">🧾 Factura</h2>{b.numFactura ? <span className="badge" style={{ color: '#1f6fd6', background: '#e3efff' }}>Núm. {b.numFactura}</span> : <span className="badge" style={{ color: '#5f6673', background: '#eceff3' }}>Sense factura · proper número {nextInvoiceNumber(b)}</span>}</div>
           {!b.numFactura
             ? <><button className="btn-game" disabled={miss.length > 0} onClick={() => ask('Generar la factura? S’hi assignarà el número ' + nextInvoiceNumber(b) + ' i la numeració avançarà.', generarFactura)}>🧾 Generar factura (assigna número)</button>
               <p className="text-xs opacity-70 font-bold mt-2">El número s’assigna una sola vegada per bolo: tornar-la a descarregar no crea cap factura nova.</p></>
@@ -2670,6 +2676,7 @@ function BoloFitxa({ bolo, tab0, onClose }) {
                 <button className="btn-game sm ghost" onClick={() => setPreview(preview === 'factura' ? null : 'factura')}>👁️ Previsualitzar</button>
                 <button className="btn-game sm blue" disabled={!cli} onClick={() => dlInvoice('docx')}>⬇️ Word</button>
                 <button className="btn-game sm blue" disabled={!cli} onClick={() => dlInvoice('pdf')}>⬇️ PDF</button>
+                {cli && <DriveBtns doc={b.drive && b.drive.factura} onSave={() => driveDesaFactura(b, cli, { patch, toast })} />}
                 <button className="btn-game sm orange" onClick={() => patch('bolos', b.id, x => ({ estat: advanceTo(x, 'Factura enviada') }))}>📤 Marcar enviada</button>
                 <button className="btn-game sm" onClick={() => setTab('cobrament')}>💰 Cobrament</button>
               </div>
@@ -3221,6 +3228,7 @@ function PressEditor({ id, onClose, openBolo }) {
         <button className="btn-game sm ghost" onClick={() => setPrev(!prev)}>👁️ {prev ? 'Amagar' : 'Veure'} document</button>
         <button className="btn-game sm blue" onClick={() => { if (!jsPDFok()) return toast('El generador de PDF no s’ha carregat. Descarrega el Word.'); saveFile(fn + '.pdf', pressPDF(p).output('blob')); }}>⬇️ PDF</button>
         <button className="btn-game sm blue" onClick={() => saveFile(fn + '.docx', pressDocx(p))}>⬇️ Word</button>
+        <DriveBtns doc={p.drive} onSave={() => driveDesaPressupost(p, { patch, toast })} />
       </div>
       {p.estat === 'Acceptat' && <div className="info mt-3 flex flex-wrap gap-2 items-center">
         {bolo ? <>🔗 Bolo vinculat: <b>{boloNom(bolo)}</b> ({fmtDateL(bolo.data)}) <button className="btn-game sm teal" onClick={() => openBolo(bolo)}>📂 Obrir bolo</button><button className="btn-game sm" onClick={() => openBolo(bolo, 'docs')}>🧾 Preparar factura</button></>
@@ -3375,6 +3383,7 @@ function OfConfig() {
         <Field label="Text de l’exempció" className="mt-2"><textarea className="inp" value={c.fiscal.exempcioText} onChange={e => S('fiscal', 'exempcioText', e.target.value)} /></Field>
         <div className="grid sm:grid-cols-3 gap-2 mt-2">{I('numeracio', 'proxim', 'Pròxim número de factura', 'number')}{I('numeracio', 'any', 'Any de la numeració (canvia sol cada any)', 'number')}<Field label="Els comptes comencen el"><input className="inp" type="date" value={c.iniciComptes || '2027-01-01'} onChange={e => setC(x => ({ ...x, iniciComptes: e.target.value }))} /></Field><Field label="Data de factura per defecte"><select className="inp" value={c.dataFacturaMode} onChange={e => setC(x => ({ ...x, dataFacturaMode: e.target.value }))}><option value="posterior">Endemà del bolo</option><option value="actual">Data actual</option></select></Field></div>
         <p className="text-xs opacity-70 font-bold">Si ja havíeu emès factures amb el gestor antic, posa aquí el número que toca ara perquè no es repeteixin.</p></div>
+      <DriveConfig c={c} setC={setC} />
       <button className="btn-game" onClick={save}>💾 Desar configuració</button>
     </>
   );
@@ -3711,8 +3720,10 @@ function DocsRapids({ b, sm = true }) {
   const cli = client(b.clientId);
   const contracte = async () => {
     const miss = requiredMissing(b, cli); if (miss.length) { setFalten(miss); return; }
+    if (driveCfg().auto) { try { await driveToken(); } catch (e) { } }
     const fn = (b.data || 'sense-data') + '_' + safeName(cli.nom) + '_Contracte';
     await saveFile(fn + '.docx', contractDocx(b, cli));
+    if (driveCfg().auto && driveTok) driveDesaContracte(b, cli, { patch, toast });
     patch('bolos', b.id, x => ({ estat: advanceTo(x, 'Contracte generat'), dataContracte: x.dataContracte || todayISO() }));
     toast('Contracte generat i descarregat 📜');
   };
@@ -3738,6 +3749,130 @@ function DocsRapids({ b, sm = true }) {
       </Modal>)}
     </>
   );
+}
+
+/* =====================================================================
+   GOOGLE DRIVE: els contractes, factures i pressupostos es desen com a
+   Documents de Google, per carpetes:  LA FOLLIA / Contractes / 2027 / 02 - Febrer / C-001 · …
+   Fa servir el permís «drive.file»: l'app només veu les carpetes i fitxers que ella mateixa crea.
+   ===================================================================== */
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_API = 'https://www.googleapis.com/drive/v3/';
+const DRIVE_UP = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name';
+const DRIVE_ACTIVAR = 'https://console.cloud.google.com/apis/library/drive.googleapis.com?project=hotel-follia';
+const MESOS_DRIVE = ['01 - Gener', '02 - Febrer', '03 - Març', '04 - Abril', '05 - Maig', '06 - Juny', '07 - Juliol', '08 - Agost', '09 - Setembre', '10 - Octubre', '11 - Novembre', '12 - Desembre'];
+const driveCfg = () => ({ carpeta: 'LA FOLLIA', auto: false, ...((D && D.config && D.config.drive) || {}) });
+let driveTok = null; const driveFolders = {};
+async function driveToken(force) {
+  if (!force && driveTok && driveTok.exp > Date.now() + 60000) return driveTok.t;
+  if (!force) { try { const s = JSON.parse(sessionStorage.getItem('follia-drive') || 'null'); if (s && s.exp > Date.now() + 60000) { driveTok = s; return s.t; } } catch (e) { } }
+  const u = window.firebase && firebase.auth().currentUser; if (!u) throw new Error('Has d’haver entrat amb Google.');
+  const p = new firebase.auth.GoogleAuthProvider(); p.addScope(DRIVE_SCOPE); p.setCustomParameters({ login_hint: u.email || '' });
+  const r = await u.reauthenticateWithPopup(p);
+  const t = r && r.credential && r.credential.accessToken; if (!t) throw new Error('Google no ha donat permís per al Drive.');
+  driveTok = { t, exp: Date.now() + 55 * 60000 }; try { sessionStorage.setItem('follia-drive', JSON.stringify(driveTok)); } catch (e) { }
+  return t;
+}
+async function dfetch(url, opts = {}) {
+  const t = await driveToken();
+  const r = await fetch(url.startsWith('http') ? url : DRIVE_API + url, { ...opts, headers: { Authorization: 'Bearer ' + t, ...(opts.headers || {}) } });
+  if (r.status === 401) { driveTok = null; try { sessionStorage.removeItem('follia-drive'); } catch (e) { } throw new Error('El permís del Drive ha caducat: torna a prémer el botó.'); }
+  if (!r.ok) { let j = null; try { j = await r.json(); } catch (e) { } const m = (j && j.error && (j.error.message || '')) || ('HTTP ' + r.status); if (/has not been used|is disabled|accessNotConfigured/i.test(m + JSON.stringify(j || {}))) { const e = new Error('API_OFF'); e.api = true; throw e; } throw new Error(m); }
+  return r.json();
+}
+const qEsc = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+async function driveFolder(name, parent) {
+  const k = parent + '/' + name; if (driveFolders[k]) return driveFolders[k];
+  const q = "name='" + qEsc(name) + "' and mimeType='application/vnd.google-apps.folder' and trashed=false and '" + parent + "' in parents";
+  const r = await dfetch('files?fields=files(id)&spaces=drive&q=' + encodeURIComponent(q));
+  let id = r.files && r.files[0] && r.files[0].id;
+  if (!id) { const c = await dfetch('files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] }) }); id = c.id; }
+  return (driveFolders[k] = id);
+}
+async function driveRoot() {
+  const cfg = driveCfg(), uk = 'follia-drive-root-' + normNom((firebase.auth().currentUser || {}).email || '') + '-' + normNom(cfg.carpeta);
+  let id = null; try { id = localStorage.getItem(uk); } catch (e) { }
+  if (id) { try { const f = await dfetch('files/' + id + '?fields=id,trashed'); if (f && !f.trashed) return id; } catch (e) { if (e.api) throw e; } }
+  id = await driveFolder(cfg.carpeta || 'LA FOLLIA', 'root'); try { localStorage.setItem(uk, id); } catch (e) { }
+  return id;
+}
+async function drivePath(parts) { let p = await driveRoot(); for (const n of parts) p = await driveFolder(String(n), p); return p; }
+async function driveUploadDoc({ blob, name, path, replaceId }) {
+  const parent = await drivePath(path);
+  if (replaceId) { try { await dfetch('files/' + replaceId + '?fields=id', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); } catch (e) { if (e.api) throw e; } }
+  const bnd = 'follia' + Math.random().toString(36).slice(2);
+  const meta = { name, parents: [parent], mimeType: 'application/vnd.google-apps.document' };
+  const docx = blob instanceof Blob ? blob : new Blob([blob]);
+  const body = new Blob(['--' + bnd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + bnd + '\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n', docx, '\r\n--' + bnd + '--'], { type: 'multipart/related; boundary=' + bnd });
+  const r = await dfetch(DRIVE_UP, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + bnd }, body });
+  return { id: r.id, link: r.webViewLink || ('https://docs.google.com/document/d/' + r.id + '/edit'), at: todayISO() };
+}
+const ddmmyyyy = iso => iso ? iso.split('-').reverse().join('-') : 'sense-data';
+const mesDe = iso => { const d = iso || todayISO(); return [d.slice(0, 4), MESOS_DRIVE[(+d.slice(5, 7) || 1) - 1]]; };
+function nextContracteNum(d, year) { const mx = Math.max(0, ...d.bolos.filter(x => x.numContracte && String(x.numContracte).endsWith('/' + year)).map(x => parseInt(x.numContracte) || 0)); return String(mx + 1).padStart(3, '0') + '/' + year; }
+const driveErr = (e, toast) => { if (e && e.api) toast('Cal activar l’API de Google Drive (un sol cop): ves a Oficina › Configuració › Google Drive'); else if (e && /popup|cancel/i.test((e.code || '') + (e.message || ''))) toast('S’ha tancat la finestra de Google: no s’ha desat al Drive'); else toast('Drive: ' + ((e && e.message) || e)); };
+
+/* Desa al Drive. Retorna l'enllaç o null. */
+async function driveDesaContracte(b, cli, { patch, toast }) {
+  try {
+    await driveToken();
+    const year = (b.data || todayISO()).slice(0, 4);
+    let num = b.numContracte; if (!num || !String(num).endsWith('/' + year)) num = nextContracteNum(D, year);
+    const [y, mes] = mesDe(b.data);
+    const name = 'C-' + num.split('/')[0] + ' · ' + ddmmyyyy(b.data) + ' · ' + (cli.nom || boloNom(b));
+    const old = b.drive && b.drive.contracte && b.drive.contracte.id;
+    toast('☁️ Desant el contracte al Drive…');
+    const r = await driveUploadDoc({ blob: contractDocx(b, cli), name, path: ['Contractes', y, mes], replaceId: old });
+    patch('bolos', b.id, x => ({ numContracte: num, drive: { ...(x.drive || {}), contracte: r } }));
+    toast('Contracte desat al Drive ✔ (Contractes › ' + y + ' › ' + mes + ')'); return r.link;
+  } catch (e) { driveErr(e, toast); return null; }
+}
+async function driveDesaFactura(b, cli, { patch, toast }) {
+  try {
+    if (!b.numFactura) { toast('Primer genera la factura (número definitiu)'); return null; }
+    await driveToken();
+    const [y, mes] = mesDe(b.dataFactura);
+    const name = 'F-' + String(b.numFactura).replace('/', '-') + ' · ' + ddmmyyyy(b.dataFactura) + ' · ' + (cli.nom || boloNom(b));
+    const old = b.drive && b.drive.factura && b.drive.factura.id;
+    toast('☁️ Desant la factura al Drive…');
+    const r = await driveUploadDoc({ blob: invoiceDocx(b, cli), name, path: ['Factures', y, mes], replaceId: old });
+    patch('bolos', b.id, x => ({ drive: { ...(x.drive || {}), factura: r } }));
+    toast('Factura desada al Drive ✔ (Factures › ' + y + ' › ' + mes + ')'); return r.link;
+  } catch (e) { driveErr(e, toast); return null; }
+}
+async function driveDesaPressupost(p, { patch, toast }) {
+  try {
+    await driveToken();
+    const [y, mes] = mesDe(p.data);
+    const name = p.num + ' · ' + ddmmyyyy(p.data) + ' · ' + ((p.client && p.client.nom) || 'Client');
+    toast('☁️ Desant el pressupost al Drive…');
+    const r = await driveUploadDoc({ blob: pressDocx(p), name, path: ['Pressupostos', y, mes], replaceId: p.drive && p.drive.id });
+    patch('pressupostos', p.id, () => ({ drive: r }));
+    toast('Pressupost desat al Drive ✔ (Pressupostos › ' + y + ' › ' + mes + ')'); return r.link;
+  } catch (e) { driveErr(e, toast); return null; }
+}
+function DriveBtns({ doc, onSave, label = 'Desa a Drive' }) {
+  const [busy, setBusy] = useState(false);
+  return <>
+    <button className="btn-game sm" style={{ background: '#1fa463' }} disabled={busy} onClick={async () => { setBusy(true); await onSave(); setBusy(false); }}>{busy ? '⏳ Desant…' : '☁️ ' + (doc ? 'Torna a desar a Drive' : label)}</button>
+    {doc && doc.link && <a className="btn-game sm ghost" href={doc.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📂 Obrir a Drive</a>}
+  </>;
+}
+function DriveConfig({ c, setC }) {
+  const { toast } = useApp(); const dc = { carpeta: 'LA FOLLIA', auto: false, ...(c.drive || {}) };
+  const [estat, setEstat] = useState(null);
+  const S = (k, v) => setC(x => ({ ...x, drive: { ...dc, ...(x.drive || {}), [k]: v } }));
+  const prova = async () => { setEstat({ t: 'info', m: '⏳ Connectant…' }); try { await driveToken(true); const ids = []; for (const t of ['Contractes', 'Factures', 'Pressupostos']) ids.push(await drivePath([t])); const root = await driveRoot(); setEstat({ t: 'ok', m: 'Connectat ✔ Carpetes creades a «' + (dc.carpeta || 'LA FOLLIA') + '».', link: 'https://drive.google.com/drive/folders/' + root }); } catch (e) { setEstat(e && e.api ? { t: 'err', m: 'api' } : { t: 'err', m: (e && e.message) || String(e) }); } };
+  return <div className="card mb-4"><h2>☁️ Google Drive</h2>
+    <p className="text-sm font-bold opacity-80">Els contractes, factures i pressupostos es desen com a <b>Documents de Google</b> al Drive del compte amb què entres, per carpetes: <i>{dc.carpeta || 'LA FOLLIA'} › Contractes / Factures / Pressupostos › any › mes</i>, i numerats (C-001, F-01-2027, P-2027-001…).</p>
+    <div className="grid sm:grid-cols-2 gap-2 mt-2">
+      <Field label="Nom de la carpeta principal"><input className="inp" value={dc.carpeta} onChange={e => S('carpeta', e.target.value)} /></Field>
+      <Field label="Desar automàticament"><select className="inp" value={dc.auto ? '1' : '0'} onChange={e => S('auto', e.target.value === '1')}><option value="0">No, només quan premi «Desa a Drive»</option><option value="1">Sí, cada cop que generi un document</option></select></Field>
+    </div>
+    <div className="flex gap-2 flex-wrap items-center mt-2"><button className="btn-game sm" style={{ background: '#1fa463' }} onClick={prova}>🔗 Connectar i crear les carpetes</button>{estat && estat.link && <a className="btn-game sm ghost" href={estat.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📂 Obrir la carpeta</a>}</div>
+    {estat && (estat.m === 'api' ? <div className="err mt-2">Falta un pas d’un sol cop: activar l’API de Google Drive al projecte. <a href={DRIVE_ACTIVAR} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Obre aquest enllaç</a>, prem <b>«Habilitar»</b> (o «Enable»), espera 1 minut i torna a provar.</div> : <div className={(estat.t === 'ok' ? 'ok' : estat.t === 'err' ? 'err' : 'info') + ' mt-2'}>{estat.m}</div>)}
+    <p className="text-xs opacity-70 font-bold mt-2">Consell: entra a l’hotel amb el compte de Google de La Follia perquè tot quedi al seu Drive. L’app només pot veure les carpetes que ella mateixa crea. Recorda desar la configuració.</p>
+  </div>;
 }
 
 
