@@ -3822,7 +3822,7 @@ function loadPicker() {
   pickerReady = new Promise((res, rej) => { const go = () => window.gapi.load('picker', { callback: res, onerror: rej }); if (window.gapi) return go(); const sc = document.createElement('script'); sc.src = 'https://apis.google.com/js/api.js'; sc.onload = go; sc.onerror = () => { pickerReady = null; rej(new Error('No s’ha pogut carregar el selector de Google')); }; document.head.appendChild(sc); });
   return pickerReady;
 }
-async function triaCarpetaDrive(titol) {
+async function triaCarpetaDrive(titol, senseClau) {
   const t = await driveToken(); await loadPicker();
   const G = window.google.picker, cfg = window.FIREBASE_CONFIG || {};
   return new Promise(res => {
@@ -3830,7 +3830,9 @@ async function triaCarpetaDrive(titol) {
     const compartides = mk().setOwnedByMe(false); try { compartides.setLabel && compartides.setLabel('Compartides amb mi'); } catch (e) { }
     const meves = mk().setOwnedByMe(true); try { meves.setLabel && meves.setLabel('El meu Drive'); } catch (e) { }
     const unitats = mk().setEnableDrives(true); try { unitats.setLabel && unitats.setLabel('Unitats compartides'); } catch (e) { }
-    const pk = new G.PickerBuilder().addView(compartides).addView(meves).addView(unitats).enableFeature(G.Feature.SUPPORT_DRIVES).setOAuthToken(t).setDeveloperKey(cfg.apiKey).setAppId(String(cfg.messagingSenderId || '')).setTitle(titol || 'Tria la carpeta')
+    const pkb = new G.PickerBuilder().addView(compartides).addView(meves).addView(unitats).enableFeature(G.Feature.SUPPORT_DRIVES).setOAuthToken(t);
+    if (!senseClau) pkb.setDeveloperKey(cfg.apiKey);
+    const pk = pkb.setAppId(String(cfg.messagingSenderId || '')).setTitle(titol || 'Tria la carpeta')
       .setCallback(d => { if (d.action === G.Action.PICKED) { const f = d.docs[0]; res({ id: f.id, nom: f.name, link: f.url }); } else if (d.action === G.Action.CANCEL) res(null); }).build();
     pk.setVisible(true);
   });
@@ -3911,6 +3913,7 @@ function DriveConfig({ c, setC }) {
       <div className="flex flex-wrap gap-2 mt-2 items-center">
         {Object.entries(dc.carpetesAny || {}).sort().map(([y, f]) => <span key={y} className="badge" style={{ background: '#e3f8ec', color: '#14894b' }}>{y}: 📁 {f.nom} <a href={'https://drive.google.com/drive/folders/' + f.id} target="_blank" rel="noopener noreferrer">↗</a> <span style={{ cursor: 'pointer' }} title="Treure" onClick={() => S('carpetesAny', Object.fromEntries(Object.entries(dc.carpetesAny).filter(([k]) => k !== y)))}>✕</span></span>)}
         <select className="inp" style={{ maxWidth: 110 }} value={anyTria} onChange={e => setAnyTria(e.target.value)}>{[0, 1, 2].map(i => String(new Date().getFullYear() + i)).concat(iniciComptes().slice(0, 4)).filter((v, i, a) => a.indexOf(v) === i).sort().map(y => <option key={y}>{y}</option>)}</select>
+        <button className="btn-game sm ghost" title="Si el selector diu «The API developer key is invalid»" onClick={async () => { try { const f = await triaCarpetaDrive('Tria la carpeta del ' + anyTria, true); if (f) { S('carpetesAny', { ...(dc.carpetesAny || {}), [anyTria]: { id: f.id, nom: f.nom } }); toast('Carpeta del ' + anyTria + ': «' + f.nom + '». Recorda desar la configuració'); } } catch (e) { setEstat({ t: 'err', m: (e && e.message) || String(e) }); } }}>🔑 Error de clau? Prova-ho així</button>
         <button className="btn-game sm" style={{ background: '#1fa463' }} onClick={async () => { try { const f = await triaCarpetaDrive('Tria la carpeta del ' + anyTria); if (f) { S('carpetesAny', { ...(dc.carpetesAny || {}), [anyTria]: { id: f.id, nom: f.nom } }); toast('Carpeta del ' + anyTria + ': «' + f.nom + '». Recorda desar la configuració'); } } catch (e) { setEstat(e && e.api ? { t: 'err', m: 'api' } : { t: 'err', m: (e && e.message) || String(e) }); } }}>📂 Triar la carpeta del {anyTria}</button>
       </div>
       {Object.keys(dc.carpetesAny || {}).length > 0 && <p className="text-xs font-bold mt-1">Mode segur actiu: si un document és d’un any sense carpeta triada, l’app t’avisarà i no el desarà enlloc més.</p>}
