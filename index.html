@@ -3796,7 +3796,36 @@ async function driveRoot() {
   id = await driveFolder(cfg.carpeta || 'LA FOLLIA', 'root'); try { localStorage.setItem(uk, id); } catch (e) { }
   return id;
 }
-async function drivePath(parts) { let p = await driveRoot(); for (const n of parts) p = await driveFolder(String(n), p); return p; }
+/* Carpetes triades per any (amb el selector de Google): l'app només hi pot escriure a dins */
+const carpetesAny = () => (driveCfg().carpetesAny || {});
+async function driveBase(year) {
+  const ca = carpetesAny();
+  if (ca[year] && ca[year].id) return { id: ca[year].id, skipYear: true };
+  if (Object.keys(ca).length) { const e = new Error('NEED_PICK'); e.pick = year; throw e; }
+  return { id: await driveRoot(), skipYear: false };
+}
+/* path = [tipus, any, mes] */
+async function drivePath(parts) {
+  const [tipus, any, ...rest] = parts;
+  if (any && /^\d{4}$/.test(String(any))) { const b = await driveBase(String(any)); let p = b.id; for (const n of (b.skipYear ? [tipus, ...rest] : parts)) p = await driveFolder(String(n), p); return p; }
+  let p = await driveRoot(); for (const n of parts) p = await driveFolder(String(n), p); return p;
+}
+let pickerReady = null;
+function loadPicker() {
+  if (pickerReady) return pickerReady;
+  pickerReady = new Promise((res, rej) => { const go = () => window.gapi.load('picker', { callback: res, onerror: rej }); if (window.gapi) return go(); const sc = document.createElement('script'); sc.src = 'https://apis.google.com/js/api.js'; sc.onload = go; sc.onerror = () => { pickerReady = null; rej(new Error('No s’ha pogut carregar el selector de Google')); }; document.head.appendChild(sc); });
+  return pickerReady;
+}
+async function triaCarpetaDrive(titol) {
+  const t = await driveToken(); await loadPicker();
+  const G = window.google.picker, cfg = window.FIREBASE_CONFIG || {};
+  return new Promise(res => {
+    const view = new G.DocsView(G.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setMimeTypes('application/vnd.google-apps.folder');
+    const pk = new G.PickerBuilder().addView(view).setOAuthToken(t).setDeveloperKey(cfg.apiKey).setAppId(String(cfg.messagingSenderId || '')).setTitle(titol || 'Tria la carpeta')
+      .setCallback(d => { if (d.action === G.Action.PICKED) { const f = d.docs[0]; res({ id: f.id, nom: f.name, link: f.url }); } else if (d.action === G.Action.CANCEL) res(null); }).build();
+    pk.setVisible(true);
+  });
+}
 async function driveUploadDoc({ blob, name, path, replaceId }) {
   const parent = await drivePath(path);
   if (replaceId) { try { await dfetch('files/' + replaceId + '?fields=id', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); } catch (e) { if (e.api) throw e; } }
@@ -3810,7 +3839,7 @@ async function driveUploadDoc({ blob, name, path, replaceId }) {
 const ddmmyyyy = iso => iso ? iso.split('-').reverse().join('-') : 'sense-data';
 const mesDe = iso => { const d = iso || todayISO(); return [d.slice(0, 4), MESOS_DRIVE[(+d.slice(5, 7) || 1) - 1]]; };
 function nextContracteNum(d, year) { const mx = Math.max(0, ...d.bolos.filter(x => x.numContracte && String(x.numContracte).endsWith('/' + year)).map(x => parseInt(x.numContracte) || 0)); return String(mx + 1).padStart(3, '0') + '/' + year; }
-const driveErr = (e, toast) => { if (e && e.api) toast('Cal activar l’API de Google Drive (un sol cop): ves a Oficina › Configuració › Google Drive'); else if (e && /popup|cancel/i.test((e.code || '') + (e.message || ''))) toast('S’ha tancat la finestra de Google: no s’ha desat al Drive'); else toast('Drive: ' + ((e && e.message) || e)); };
+const driveErr = (e, toast) => { if (e && e.pick) toast('Aquest document és del ' + e.pick + ': tria primer la carpeta del ' + e.pick + ' a Oficina › Configuració › Google Drive'); else if (e && e.api) toast('Cal activar l’API de Google Drive (un sol cop): ves a Oficina › Configuració › Google Drive'); else if (e && /popup|cancel/i.test((e.code || '') + (e.message || ''))) toast('S’ha tancat la finestra de Google: no s’ha desat al Drive'); else toast('Drive: ' + ((e && e.message) || e)); };
 
 /* Desa al Drive. Retorna l'enllaç o null. */
 async function driveDesaContracte(b, cli, { patch, toast }) {
@@ -3860,17 +3889,25 @@ function DriveBtns({ doc, onSave, label = 'Desa a Drive' }) {
 }
 function DriveConfig({ c, setC }) {
   const { toast } = useApp(); const dc = { carpeta: 'LA FOLLIA', auto: false, ...(c.drive || {}) };
-  const [estat, setEstat] = useState(null);
+  const [estat, setEstat] = useState(null); const [anyTria, setAnyTria] = useState(String(Math.max(new Date().getFullYear(), +iniciComptes().slice(0, 4))));
   const S = (k, v) => setC(x => ({ ...x, drive: { ...dc, ...(x.drive || {}), [k]: v } }));
-  const prova = async () => { setEstat({ t: 'info', m: '⏳ Connectant…' }); try { await driveToken(true); const ids = []; for (const t of ['Contractes', 'Factures', 'Pressupostos']) ids.push(await drivePath([t])); const root = await driveRoot(); setEstat({ t: 'ok', m: 'Connectat ✔ Carpetes creades a «' + (dc.carpeta || 'LA FOLLIA') + '».', link: 'https://drive.google.com/drive/folders/' + root }); } catch (e) { setEstat(e && e.api ? { t: 'err', m: 'api' } : { t: 'err', m: (e && e.message) || String(e) }); } };
+  const prova = async () => { setEstat({ t: 'info', m: '⏳ Connectant…' }); try { await driveToken(true); const ca = dc.carpetesAny || {}; const ys = Object.keys(ca); if (ys.length) { for (const y of ys) for (const t of ['Contractes', 'Factures', 'Pressupostos']) await driveFolder(t, ca[y].id); setEstat({ t: 'ok', m: 'Connectat ✔ Carpetes Contractes, Factures i Pressupostos creades dins de: ' + ys.map(y => ca[y].nom + ' (' + y + ')').join(', ') + '.', link: 'https://drive.google.com/drive/folders/' + ca[ys.sort().pop()].id }); return; } for (const t of ['Contractes', 'Factures', 'Pressupostos']) await drivePath([t]); const root = await driveRoot(); setEstat({ t: 'ok', m: 'Connectat ✔ Carpetes creades a «' + (dc.carpeta || 'LA FOLLIA') + '».', link: 'https://drive.google.com/drive/folders/' + root }); } catch (e) { setEstat(e && e.api ? { t: 'err', m: 'api' } : { t: 'err', m: (e && e.message) || String(e) }); } };
   return <div className="card mb-4"><h2>☁️ Google Drive</h2>
     <p className="text-sm font-bold opacity-80">Els contractes, factures i pressupostos es desen com a <b>Documents de Google</b> al Drive del compte amb què entres, per carpetes: <i>{dc.carpeta || 'LA FOLLIA'} › Contractes / Factures / Pressupostos › any › mes</i>, i numerats (C-001, F-01-2027, P-2027-001…).</p>
     <div className="grid sm:grid-cols-2 gap-2 mt-2">
       <Field label="Nom de la carpeta principal"><input className="inp" value={dc.carpeta} onChange={e => S('carpeta', e.target.value)} /></Field>
       <Field label="Desar automàticament"><select className="inp" value={dc.auto ? '1' : '0'} onChange={e => S('auto', e.target.value === '1')}><option value="0">No, només quan premi «Desa a Drive»</option><option value="1">Sí, cada cop que generi un document</option></select></Field>
     </div>
-    <div className="flex gap-2 flex-wrap items-center mt-2"><button className="btn-game sm" style={{ background: '#1fa463' }} onClick={prova}>🔗 Connectar i crear les carpetes</button>{estat && estat.link && <a className="btn-game sm ghost" href={estat.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📂 Obrir la carpeta</a>}</div>
-    {estat && (estat.m === 'api' ? <div className="err mt-2">Falta un pas d’un sol cop: activar l’API de Google Drive al projecte. <a href={DRIVE_ACTIVAR} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Obre aquest enllaç</a>, prem <b>«Habilitar»</b> (o «Enable»), espera 1 minut i torna a provar.</div> : <div className={(estat.t === 'ok' ? 'ok' : estat.t === 'err' ? 'err' : 'info') + ' mt-2'}>{estat.m}</div>)}
+    <div className="info mt-2"><b>📂 Carpetes per any (recomanat):</b> tria tu mateix la carpeta del Drive on vols els documents de cada any (per exemple «LA FOLLIA › 2027»). L’app <b>només</b> podrà escriure dins de les carpetes que triïs; la resta del teu Drive no la veu. A dins hi crearà <i>Contractes / Factures / Pressupostos › mes</i>.
+      <div className="flex flex-wrap gap-2 mt-2 items-center">
+        {Object.entries(dc.carpetesAny || {}).sort().map(([y, f]) => <span key={y} className="badge" style={{ background: '#e3f8ec', color: '#14894b' }}>{y}: 📁 {f.nom} <a href={'https://drive.google.com/drive/folders/' + f.id} target="_blank" rel="noopener noreferrer">↗</a> <span style={{ cursor: 'pointer' }} title="Treure" onClick={() => S('carpetesAny', Object.fromEntries(Object.entries(dc.carpetesAny).filter(([k]) => k !== y)))}>✕</span></span>)}
+        <select className="inp" style={{ maxWidth: 110 }} value={anyTria} onChange={e => setAnyTria(e.target.value)}>{[0, 1, 2].map(i => String(new Date().getFullYear() + i)).concat(iniciComptes().slice(0, 4)).filter((v, i, a) => a.indexOf(v) === i).sort().map(y => <option key={y}>{y}</option>)}</select>
+        <button className="btn-game sm" style={{ background: '#1fa463' }} onClick={async () => { try { const f = await triaCarpetaDrive('Tria la carpeta del ' + anyTria); if (f) { S('carpetesAny', { ...(dc.carpetesAny || {}), [anyTria]: { id: f.id, nom: f.nom } }); toast('Carpeta del ' + anyTria + ': «' + f.nom + '». Recorda desar la configuració'); } } catch (e) { setEstat(e && e.api ? { t: 'err', m: 'api' } : { t: 'err', m: (e && e.message) || String(e) }); } }}>📂 Triar la carpeta del {anyTria}</button>
+      </div>
+      {Object.keys(dc.carpetesAny || {}).length > 0 && <p className="text-xs font-bold mt-1">Mode segur actiu: si un document és d’un any sense carpeta triada, l’app t’avisarà i no el desarà enlloc més.</p>}
+    </div>
+    <div className="flex gap-2 flex-wrap items-center mt-2"><button className="btn-game sm" style={{ background: '#1fa463' }} onClick={prova}>🔗 Provar la connexió</button>{estat && estat.link && <a className="btn-game sm ghost" href={estat.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📂 Obrir la carpeta</a>}</div>
+    {estat && (estat.m === 'api' ? <div className="err mt-2">Falta un pas d’un sol cop: activar les API de Google al projecte. Obre <a href={DRIVE_ACTIVAR} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Google Drive API</a> i <a href="https://console.cloud.google.com/apis/library/picker.googleapis.com?project=hotel-follia" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Google Picker API</a>, prem <b>«Habilitar»</b> a cada una, espera 1 minut i torna a provar.</div> : <div className={(estat.t === 'ok' ? 'ok' : estat.t === 'err' ? 'err' : 'info') + ' mt-2'}>{estat.m}</div>)}
     <p className="text-xs opacity-70 font-bold mt-2">Consell: entra a l’hotel amb el compte de Google de La Follia perquè tot quedi al seu Drive. L’app només pot veure les carpetes que ella mateixa crea. Recorda desar la configuració.</p>
   </div>;
 }
