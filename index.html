@@ -126,7 +126,9 @@ let D = null; // dades vigents (s'actualitza a cada render de l'App)
 
 /* Els comptes comencen a «iniciComptes» (per defecte l'1/1/2027): tot el que és anterior ja està fet, facturat i cobrat, i no suma diners */
 const iniciComptes = () => ((D && D.config && D.config.iniciComptes) || '2027-01-01');
-const historic = b => !!(b && b.data) && b.data < iniciComptes();
+/* Tancament del 2026: només els bolos fins al 17/11/2026 es donen per fets i cobrats; els posteriors (p. ex. Santa Cecília) segueixen el procés normal */
+const dataTancament = () => ((D && D.config && D.config.dataTancament) || '2026-11-18');
+const historic = b => !!(b && b.data) && b.data < iniciComptes() && b.data < dataTancament();
 const dinsComptes = dt => !dt || dt >= iniciComptes();
 const isDone = b => b.estat !== 'Cancel·lada' && (b.tancat || historic(b) || ESTATS.indexOf(b.estat) >= ESTATS.indexOf('Bolo realitzat'));
 /* Bolos anteriors als comptes: cobrats per defecte, tret que s'hagin marcat expressament com a pendents (cobrat: false) */
